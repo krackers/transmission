@@ -3738,6 +3738,11 @@ static void removeKeRangerRansomware()
 
         [segmentedCell setTag: TOOLBAR_PAUSE_TAG forSegment: TOOLBAR_PAUSE_TAG];
         [segmentedControl setImage: [NSImage imageNamed: @"ToolbarPauseAllTemplate"] forSegment: TOOLBAR_PAUSE_TAG];
+        if (@available(macOS 10.10, *)) {
+            // Default inferred style works fine
+        } else {
+            [segmentedControl setSegmentStyle: NSSegmentStyleTexturedSquare];
+        }
         [segmentedCell setToolTip: NSLocalizedString(@"Pause all transfers",
                                     "All toolbar item -> tooltip") forSegment: TOOLBAR_PAUSE_TAG];
 
