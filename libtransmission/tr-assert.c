@@ -12,8 +12,6 @@
 
 #include "tr-assert.h"
 
-#if !defined(NDEBUG) || defined(TR_FORCE_ASSERTIONS)
-
 bool tr_assert_report(char const* file, int line, char const* message_fmt, ...)
 {
     va_list args;
@@ -27,5 +25,3 @@ bool tr_assert_report(char const* file, int line, char const* message_fmt, ...)
 
     abort();
 }
-
-#endif

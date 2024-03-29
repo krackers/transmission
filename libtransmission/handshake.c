@@ -1173,6 +1173,9 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
             handshake->haveSentBitTorrentHandshake = true;
             setReadState(handshake, AWAITING_HANDSHAKE);
             tr_peerIoWriteBytes(handshake->io, msg, sizeof(msg), false);
+            // Should not call tr_handshakeDone yet, since we have reset state back to
+            // AWAITING_HANDSHAKE with retry pending
+            return;
         }
     }
 
@@ -1189,12 +1192,11 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
         handshake->haveSentBitTorrentHandshake = true;
         setReadState(handshake, AWAITING_HANDSHAKE);
         tr_peerIoWriteBytes(handshake->io, msg, sizeof(msg), false);
+        return;
     }
-    else
-    {
-        dbgmsg(handshake, "libevent got an error what==%d, errno=%d (%s)", (int)what, errno, tr_strerror(errno));
-        tr_handshakeDone(handshake, false);
-    }
+
+    dbgmsg(handshake, "libevent got an error what==%d, errno=%d (%s)", (int)what, errno, tr_strerror(errno));
+    tr_handshakeDone(handshake, false);
 }
 
 /**

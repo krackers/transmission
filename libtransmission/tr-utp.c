@@ -86,6 +86,10 @@ void tr_utpSendTo(void* closure UNUSED, unsigned char const* buf UNUSED, size_t 
 {
 }
 
+void tr_utpInit(tr_session* ss UNUSED) {
+
+}
+
 #else
 
 /* Greg says 50ms works for them. */
@@ -133,7 +137,7 @@ void tr_utpSendTo(void* closure, unsigned char const* buf, size_t buflen, struct
     }
 }
 
-static void reset_timer(tr_session* ss)
+static void restart_timer(tr_session* ss)
 {
     int sec;
     int usec;
@@ -161,23 +165,11 @@ static void timer_callback(evutil_socket_t s UNUSED, short type UNUSED, void* cl
 {
     tr_session* ss = closure;
     UTP_CheckTimeouts();
-    reset_timer(ss);
+    restart_timer(ss);
 }
 
 int tr_utpPacket(unsigned char const* buf, size_t buflen, struct sockaddr const* from, socklen_t fromlen, tr_session* ss)
 {
-    if (!ss->isClosed && ss->utp_timer == NULL)
-    {
-        ss->utp_timer = evtimer_new(ss->event_base, timer_callback, ss);
-
-        if (ss->utp_timer == NULL)
-        {
-            return -1;
-        }
-
-        reset_timer(ss);
-    }
-
     return UTP_IsIncomingUTP(incoming, tr_utpSendTo, ss, buf, buflen, from, fromlen);
 }
 
@@ -188,6 +180,15 @@ void tr_utpClose(tr_session* session)
         evtimer_del(session->utp_timer);
         session->utp_timer = NULL;
     }
+}
+
+void tr_utpInit(tr_session* ss) {
+    // Periodic timer must always be running/checking for timeouts etc.
+    // This allow us to handle edge case of Transmission session starting with a torrent
+    // having TCP-only peers.
+    ss->utp_timer = evtimer_new(ss->event_base, timer_callback, ss);
+    CHECK(ss->utp_timer);
+    restart_timer(ss);
 }
 
 #endif /* #ifndef WITH_UTP ... else */

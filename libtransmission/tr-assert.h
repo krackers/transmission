@@ -8,13 +8,16 @@
 
 #pragma once
 
+bool TR_NORETURN tr_assert_report(char const* file, int line, char const* message_fmt, ...) TR_GNUC_PRINTF(3, 4);
+
+// Variant that always evalutes predicate & crashes if false, regardless of compilation mode
+#define CHECK(x) ((void)(TR_LIKELY(x) || tr_assert_report(__FILE__, __LINE__, "%s", #x)))
+
 #if !defined(NDEBUG) || defined(TR_FORCE_ASSERTIONS)
 
 #include <stdbool.h>
 
 #include "tr-macros.h"
-
-bool TR_NORETURN tr_assert_report(char const* file, int line, char const* message_fmt, ...) TR_GNUC_PRINTF(3, 4);
 
 #define TR_ASSERT(x) ((void)(TR_LIKELY(x) || tr_assert_report(__FILE__, __LINE__, "%s", #x)))
 #define TR_ASSERT_MSG(x, ...) ((void)(TR_LIKELY(x) || tr_assert_report(__FILE__, __LINE__, __VA_ARGS__)))
