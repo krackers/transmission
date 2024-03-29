@@ -107,8 +107,8 @@ NSMutableSet * fTrackerIconLoading;
         nameColor = statusColor = [NSColor whiteColor];
     else
     {
-        nameColor = [NSColor labelColor];
-        statusColor = [NSColor secondaryLabelColor];
+        nameColor = [NSColor controlTextColor];
+        statusColor = [NSColor darkGrayColor];
     }
 
     fNameAttributes[NSForegroundColorAttributeName] = nameColor;

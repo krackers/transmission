@@ -115,7 +115,7 @@
     else
     {
         titleColor = [NSColor controlTextColor];
-        statusColor = [NSColor secondaryLabelColor];
+        statusColor = [NSColor darkGrayColor];
     }
 
     fTitleAttributes[NSForegroundColorAttributeName] = titleColor;

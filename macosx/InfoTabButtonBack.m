@@ -21,9 +21,19 @@
  *****************************************************************************/
 
 #import "InfoTabButtonBack.h"
-#import "NSApplicationAdditions.h"
 
 @implementation InfoTabButtonBack
+
+- (id) initWithFrame: (NSRect) rect
+{
+    if ((self = [super initWithFrame: rect]))
+    {
+        NSColor * lightColor = [NSColor colorWithCalibratedRed: 245.0/255.0 green: 245.0/255.0 blue: 245.0/255.0 alpha: 1.0];
+        NSColor * darkColor = [NSColor colorWithCalibratedRed: 215.0/255.0 green: 215.0/255.0 blue: 215.0/255.0 alpha: 1.0];
+        fGradient = [[NSGradient alloc] initWithStartingColor: lightColor endingColor: darkColor];
+    }
+    return self;
+}
 
 
 - (void) drawRect: (NSRect) rect
@@ -36,11 +46,7 @@
     if (NSIntersectsRect(lineBorderRect, rect))
     {
         gridRects[count] = lineBorderRect;
-        if (@available(macOS 10.14, *)) {
-            colorRects[count] = [NSColor separatorColor];
-        } else {
-            colorRects[count] = [NSColor grayColor];
-        }
+        colorRects[count] = [NSColor grayColor];
         ++count;
 
         rect.size.height -= 1.0;
@@ -50,11 +56,7 @@
     if (NSIntersectsRect(lineBorderRect, rect))
     {
         gridRects[count] = lineBorderRect;
-        if (@available(macOS 10.14, *)) {
-            colorRects[count] = [NSColor separatorColor];
-        } else {
-            colorRects[count] = [NSColor grayColor];
-        }
+        colorRects[count] = [NSColor grayColor];
         ++count;
 
         rect.origin.y += 1.0;
@@ -63,18 +65,7 @@
 
     NSRectFillListWithColors(gridRects, colorRects, count);
 
-    NSGradient *gradient;
-
-    if ([NSApp isDarkMode]) {
-        NSColor * darkColor = [NSColor colorWithCalibratedRed: 60.0/255.0 green: 60.0/255.0 blue: 60.0/255.0 alpha: 1.0];
-        NSColor * lightColor = [NSColor colorWithCalibratedRed: 90.0/255.0 green: 90.0/255.0 blue: 90.0/255.0 alpha: 1.0];
-        gradient = [[NSGradient alloc] initWithStartingColor: lightColor endingColor: darkColor];
-    } else {
-        NSColor * lightColor = [NSColor colorWithCalibratedRed: 245.0/255.0 green: 245.0/255.0 blue: 245.0/255.0 alpha: 1.0];
-        NSColor * darkColor = [NSColor colorWithCalibratedRed: 215.0/255.0 green: 215.0/255.0 blue: 215.0/255.0 alpha: 1.0];
-        gradient = [[NSGradient alloc] initWithStartingColor: lightColor endingColor: darkColor];
-    }
-    [gradient drawInRect: rect angle: 270.0];
+    [fGradient drawInRect: rect angle: 270.0];
 }
 
 @end

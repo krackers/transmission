@@ -24,6 +24,7 @@
 
 @interface InfoTabButtonBack : NSView
 {
+    NSGradient * fGradient;
 }
 
 @end
