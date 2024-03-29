@@ -453,7 +453,7 @@ static void removeKeRangerRansomware()
 
         tr_sessionSetRPCCallback(fLib, rpcCallback, (__bridge void *)(self));
 
-        [[SUUpdater sharedUpdater] setDelegate: self];
+        //[[SUUpdater sharedUpdater] setDelegate: self];
         fQuitRequested = NO;
 
         fPauseOnLaunch = (GetCurrentKeyModifiers() & (optionKey | rightOptionKey)) != 0;

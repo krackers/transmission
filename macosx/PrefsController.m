@@ -129,7 +129,7 @@
         [fDefaults removeObjectForKey: @"SUScheduledCheckInterval"];
         if ([fDefaults objectForKey: @"CheckForUpdates"])
         {
-            [[SUUpdater sharedUpdater] setAutomaticallyChecksForUpdates: [fDefaults boolForKey: @"CheckForUpdates"]];
+            //[[SUUpdater sharedUpdater] setAutomaticallyChecksForUpdates: [fDefaults boolForKey: @"CheckForUpdates"]];
             [fDefaults removeObjectForKey: @"CheckForUpdates"];
         }
 
