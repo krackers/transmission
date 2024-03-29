@@ -274,7 +274,8 @@
     if ([self.ruleEditor numberOfRows] == 0)
         [self.ruleEditor addRow: nil];
 
-    [fTableView.window beginSheet:self.groupRulesSheetWindow completionHandler:nil];
+    [NSApp beginSheet: self.groupRulesSheetWindow modalForWindow: [fTableView window] modalDelegate: nil didEndSelector: NULL
+        contextInfo: NULL];
 }
 
 - (IBAction) cancelRules: (id) sender
