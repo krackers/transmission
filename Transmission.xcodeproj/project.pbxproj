@@ -2967,7 +2967,7 @@
 					.,
 				);
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = org.wowfunhappy.transmission;
+				PRODUCT_BUNDLE_IDENTIFIER = org.m0k.transmission;
 				PRODUCT_NAME = Transmission;
 				WRAPPER_EXTENSION = app;
 			};
@@ -3157,7 +3157,7 @@
 					.,
 				);
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = org.wowfunhappy.transmission;
+				PRODUCT_BUNDLE_IDENTIFIER = org.m0k.transmission;
 				PRODUCT_NAME = Transmission;
 				WRAPPER_EXTENSION = app;
 			};
@@ -3313,7 +3313,7 @@
 					.,
 				);
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = org.wowfunhappy.transmission;
+				PRODUCT_BUNDLE_IDENTIFIER = org.m0k.transmission;
 				PRODUCT_NAME = Transmission;
 				WRAPPER_EXTENSION = app;
 			};
