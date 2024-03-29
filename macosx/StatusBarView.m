@@ -41,7 +41,9 @@
         NSColor * darkColor = [NSColor colorWithCalibratedRed: 155.0/255.0 green: 155.0/255.0 blue: 155.0/255.0 alpha: 1.0];
         fGradient = [[NSGradient alloc] initWithStartingColor: lightColor endingColor: darkColor];
 
-        if (![NSApp isOnYosemiteOrBetter])
+        if (false && ![NSApp isOnYosemiteOrBetter])
+            //Wowfunhappy: Disabled due to personal preference. I prefer the Snow Leopard-style look.
+            //Note that when Transmission supported Snow Leopard, this was disabled on Snow Leopard too.
         {
             CIFilter * randomFilter = [CIFilter filterWithName: @"CIRandomGenerator"];
             [randomFilter setDefaults];
