@@ -41,9 +41,8 @@
         NSColor * darkColor = [NSColor colorWithCalibratedRed: 155.0/255.0 green: 155.0/255.0 blue: 155.0/255.0 alpha: 1.0];
         fGradient = [[NSGradient alloc] initWithStartingColor: lightColor endingColor: darkColor];
 
-        if (false && ![NSApp isOnYosemiteOrBetter])
-            //Wowfunhappy: Disabled due to personal preference. I prefer the Snow Leopard-style look.
-            //Note that when Transmission supported Snow Leopard, this was disabled on Snow Leopard too.
+        // Some people with custom themes (remember when those were a thing??) may want to disable texturing.
+        if (![NSApp isOnYosemiteOrBetter] && ![[NSUserDefaults standardUserDefaults] boolForKey: @"SolidStatusBar"])
         {
             CIFilter * randomFilter = [CIFilter filterWithName: @"CIRandomGenerator"];
             [randomFilter setDefaults];
