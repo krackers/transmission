@@ -61,10 +61,22 @@ typedef enum
 }
 tr_preallocation_mode;
 
+// Corresponds to the 3 modes described in
+// http://wiki.vuze.com/w/Message_Stream_Encryption
 typedef enum
 {
+    // Accept any type of incoming
+    // (for encrypted incoming handshake try to negotiate
+    // for header-only encryption over full-message encryption).
+    // Outgoing is always done in plaintext.
     TR_CLEAR_PREFERRED,
+    // Accept any type of incoming
+    // (for encrypted incoming handshake try to negotiate for full-message
+    // over header-only encryption).
+    // Outgoing always sends encrypted handshake (with full-message preferred)
+    // but can downgrade to plaintext.
     TR_ENCRYPTION_PREFERRED,
+    // Require both incoming/outgoing to be full-message encryption.
     TR_ENCRYPTION_REQUIRED
 }
 tr_encryption_mode;
