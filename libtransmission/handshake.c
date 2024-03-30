@@ -1160,8 +1160,38 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
 
     bool resendHandshake = false;
 
-    if (io->socket.type == TR_PEER_SOCKET_TYPE_UTP && !io->isIncoming &&
-        (handshake->state == AWAITING_YB || handshake->state == AWAITING_HANDSHAKE))
+
+    // Note that a connection could fail either because the peer does not support uTP
+    // or because it does not support encryption. rTorrent is the only notable client which
+    // does not implement uTP. rTorrent supports encryption, but by default it is disabled
+    // even for inbound connections. Deluge/qBitTorrent support both, but have an option
+    // to disable both of them. Transmission does not expose an option to disable inbound
+    // encrpytion. It does have an option to disable uTP or TCP connectivity
+    // (in the GUI, only uTP can be disabled).
+
+    // As a tradeoff between maximum peer reachability while minimizing number of reconnects, the order
+    // is always the following.
+
+    // With UTP enabled in Transmission preferences:
+    // Outgoing handshake as UTP, encrypted
+    // If fails, retry TCP, encrypted
+    // If fails, retry TCP, plaintext.
+
+    // With UTP disabled in Transmission preferences:
+    // Outgoing handshake as TCP, encrypted
+    // If fails, retry TCP, plaintext.
+
+    // The encryption settings in Transmission only control whether handshake-only encryption
+    // is offered as an option in the encrypted exchange, whether we accept the result of an exchange
+    // with a header-only encrypt peer, and whether we sfallback to plaintext handshake.
+
+    // (We don't try the UTP/plaintext combination, because such a combination is exceedingly unlikely
+    // and even impossible to set in two common clients [transmission/rtorrent]).
+    // We do make an effort to retry as encrypted rather than jumping to plaintext because many
+    // clients may have the require-encryption enabled (many users misunderstand what it does, and such
+    // users may have checked the box without understanding the details or conseqeuences).
+
+    if (io->socket.type == TR_PEER_SOCKET_TYPE_UTP && !io->isIncoming && handshake->state == AWAITING_YB)
     {
         /* This peer probably doesn't speak uTP. */
         dbgmsg(handshake, "uTP handshake failed");
@@ -1184,8 +1214,13 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
             dbgmsg(handshake, "Marking peer as not supporting uTP.");
             tr_peerMgrSetUtpFailed(tor, tr_peerIoGetAddress(io, NULL), true);
         }
-        /* Retry handshake in plain text */
-        resendHandshake = true;
+
+        // Try reconnecting via TCP
+        if (tr_peerIoReconnect(handshake->io) == 0) {
+            dbgmsg(handshake, "Retrying encrypted TCP handshake");
+            sendYa(handshake);
+            return;
+        }
     }
 
     /* if the error happened while we were sending a public key, we might
@@ -1194,21 +1229,21 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
     if ((handshake->state == AWAITING_YB || handshake->state == AWAITING_VC) &&
         handshake->encryptionMode != TR_ENCRYPTION_REQUIRED)
     {
+        // Note: Preserving original condition here, that doesn't explicitly filter on socket type
+        // or incoming/outgoing. Even though as far as I can see yb/vc states are only
+        // used for outgoing connections. We should never end up in a loop because
+        // each block switches the protocol type or encryption state, and we never "go backwards."
         dbgmsg(handshake, "encrypted handshake failed");
-        resendHandshake = true;
+        if (tr_peerIoReconnect(handshake->io) == 0) {
+            dbgmsg(handshake, "Retrying plaintext TCP handshake...");
+            sendPlainTextHandshake(handshake);
+            return;
+        }
     }
-
-    // Note: In both cases we always retry with a TCP, no-encryption handshake
-    // It's not clear why we do this since protocol & encryption are orthogonal.
-    // But I suppose it saves on the number of retries, since no-encryption + TCP
-    // is usually a good fallback.
-    if (resendHandshake && (tr_peerIoReconnect(handshake->io) == 0)) {
-        dbgmsg(handshake, "Retrying TCP handshake in plain text...");
-        sendPlainTextHandshake(handshake);
-    } else {
-        dbgmsg(handshake, "libevent got an error what==%d, errno=%d (%s)", (int)what, errno, tr_strerror(errno));
-        tr_handshakeDone(handshake, false);
-    }
+   
+    // All attempts failed, give up on this peer...
+    dbgmsg(handshake, "libevent got an error what==%d, errno=%d (%s)", (int)what, errno, tr_strerror(errno));
+    tr_handshakeDone(handshake, false);
 }
 
 /**
