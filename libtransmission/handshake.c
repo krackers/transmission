@@ -1243,13 +1243,12 @@ tr_handshake* tr_handshakeNew(tr_peerIo* io, tr_encryption_mode encryptionMode, 
     {
         setReadState(handshake, AWAITING_HANDSHAKE);
     }
-    else if (encryptionMode != TR_CLEAR_PREFERRED)
-    {
-        sendYa(handshake);
-    }
     else
     {
-        sendPlainTextHandshake(handshake);
+        // Always begin by sending out an encrypted handshake, even if user chose
+        // CLEAR_PREFERRED.
+        // We downgrade to a plaintext later if this was unsuccessful.
+        sendYa(handshake);
     }
 
     return handshake;
