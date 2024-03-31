@@ -25,5 +25,6 @@
 @interface NSImage (NSImageAdditions)
 
 - (NSImage *) imageWithColor: (NSColor *) color;
+- (NSImage *) templateImageNamed: (NSString *) name;
 
 @end

@@ -24,6 +24,7 @@
 #import "FilterButton.h"
 #import "GroupsController.h"
 #import "NSStringAdditions.h"
+#import "NSImageAdditions.h"
 
 #define FILTER_TYPE_TAG_NAME    401
 #define FILTER_TYPE_TAG_TRACKER 402
@@ -391,7 +392,7 @@
     NSString * toolTip;
     if (groupIndex == GROUP_FILTER_ALL_TAG)
     {
-        icon = [NSImage imageNamed: @"PinTemplate"];
+        icon = [NSImage templateImageNamed: @"PinTemplate"];
         toolTip = NSLocalizedString(@"All Groups", "Groups -> Button");
     }
     else
