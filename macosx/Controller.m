@@ -63,7 +63,6 @@
 #import "NSApplicationAdditions.h"
 #import "NSMutableArrayAdditions.h"
 #import "NSStringAdditions.h"
-#import "NSImageAdditions.h"
 #import "ExpandedPathToPathTransformer.h"
 #import "ExpandedPathToIconTransformer.h"
 
@@ -497,10 +496,8 @@ static void removeKeRangerRansomware()
                                 "Main window -> 1st bottom left button (action) tooltip")];
     [fSpeedLimitButton setToolTip: NSLocalizedString(@"Speed Limit overrides the total bandwidth limits with its own limits.",
                                 "Main window -> 2nd bottom left button (turtle) tooltip")];
-    [[fSpeedLimitButton image] setTemplate: YES];
     [fClearCompletedButton setToolTip: NSLocalizedString(@"Remove all transfers that have completed seeding.",
                                 "Main window -> 3rd bottom left button (remove all) tooltip")];
-    [[fClearCompletedButton image] setTemplate: YES];
 
     [fTableView registerForDraggedTypes: @[TORRENT_TABLE_VIEW_DATA_TYPE]];
     [fWindow registerForDraggedTypes: @[NSFilenamesPboardType, NSURLPboardType]];
@@ -2930,9 +2927,9 @@ static void removeKeRangerRansomware()
             return [[GroupsController groups] imageForIndex: group];
         }
         else if ([ident isEqualToString: @"DL Image"])
-            return [NSImage templateImageNamed: @"DownArrowGroupTemplate"];
+            return [NSImage imageNamed: @"DownArrowGroupTemplate"];
         else if ([ident isEqualToString: @"UL Image"])
-            return [NSImage templateImageNamed: [fDefaults boolForKey: @"DisplayGroupRowRatio"]
+            return [NSImage imageNamed: [fDefaults boolForKey: @"DisplayGroupRowRatio"]
                                         ? @"YingYangGroupTemplate" : @"UpArrowGroupTemplate"];
         else
         {
@@ -3649,7 +3646,7 @@ static void removeKeRangerRansomware()
         [item setLabel: NSLocalizedString(@"Create", "Create toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Create Torrent File", "Create toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Create torrent file", "Create toolbar item -> tooltip")];
-        [item setImage: [NSImage templateImageNamed: @"ToolbarCreateTemplate"]];
+        [item setImage: [NSImage imageNamed: @"ToolbarCreateTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(createFile:)];
         [item setAutovalidates: NO];
@@ -3663,7 +3660,7 @@ static void removeKeRangerRansomware()
         [item setLabel: NSLocalizedString(@"Open", "Open toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Open Torrent Files", "Open toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Open torrent files", "Open toolbar item -> tooltip")];
-        [item setImage: [NSImage templateImageNamed: @"ToolbarOpenTemplate"]];
+        [item setImage: [NSImage imageNamed: @"ToolbarOpenTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(openShowSheet:)];
         [item setAutovalidates: NO];
@@ -3677,7 +3674,7 @@ static void removeKeRangerRansomware()
         [item setLabel: NSLocalizedString(@"Open Address", "Open address toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Open Torrent Address", "Open address toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Open torrent web address", "Open address toolbar item -> tooltip")];
-        [item setImage: [NSImage templateImageNamed: @"ToolbarOpenWebTemplate"]];
+        [item setImage: [NSImage imageNamed: @"ToolbarOpenWebTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(openURLShowSheet:)];
         [item setAutovalidates: NO];
@@ -3691,7 +3688,7 @@ static void removeKeRangerRansomware()
         [item setLabel: NSLocalizedString(@"Remove", "Remove toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Remove Selected", "Remove toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Remove selected transfers", "Remove toolbar item -> tooltip")];
-        [item setImage: [NSImage templateImageNamed: @"ToolbarRemoveTemplate"]];
+        [item setImage: [NSImage imageNamed: @"ToolbarRemoveTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(removeNoDelete:)];
         [item setVisibilityPriority: NSToolbarItemVisibilityPriorityHigh];
@@ -3706,7 +3703,7 @@ static void removeKeRangerRansomware()
         [item setLabel: NSLocalizedString(@"Inspector", "Inspector toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Toggle Inspector", "Inspector toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Toggle the torrent inspector", "Inspector toolbar item -> tooltip")];
-        [item setImage: [NSImage templateImageNamed: @"ToolbarInfoTemplate"]];
+        [item setImage: [NSImage imageNamed: @"ToolbarInfoTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(showInfo:)];
 
@@ -3740,7 +3737,7 @@ static void removeKeRangerRansomware()
         [groupItem setIdentifiers: @[TOOLBAR_PAUSE_ALL, TOOLBAR_RESUME_ALL]];
 
         [segmentedCell setTag: TOOLBAR_PAUSE_TAG forSegment: TOOLBAR_PAUSE_TAG];
-        [segmentedControl setImage: [NSImage templateImageNamed: @"ToolbarPauseAllTemplate"] forSegment: TOOLBAR_PAUSE_TAG];
+        [segmentedControl setImage: [NSImage imageNamed: @"ToolbarPauseAllTemplate"] forSegment: TOOLBAR_PAUSE_TAG];
         if (@available(macOS 10.10, *)) {
             // Default inferred style works fine
         } else {
@@ -3750,7 +3747,7 @@ static void removeKeRangerRansomware()
                                     "All toolbar item -> tooltip") forSegment: TOOLBAR_PAUSE_TAG];
 
         [segmentedCell setTag: TOOLBAR_RESUME_TAG forSegment: TOOLBAR_RESUME_TAG];
-        [segmentedControl setImage: [NSImage templateImageNamed: @"ToolbarResumeAllTemplate"] forSegment: TOOLBAR_RESUME_TAG];
+        [segmentedControl setImage: [NSImage imageNamed: @"ToolbarResumeAllTemplate"] forSegment: TOOLBAR_RESUME_TAG];
         [segmentedCell setToolTip: NSLocalizedString(@"Resume all transfers",
                                     "All toolbar item -> tooltip") forSegment: TOOLBAR_RESUME_TAG];
 
@@ -3790,12 +3787,12 @@ static void removeKeRangerRansomware()
         [groupItem setIdentifiers: @[TOOLBAR_PAUSE_SELECTED, TOOLBAR_RESUME_SELECTED]];
 
         [segmentedCell setTag: TOOLBAR_PAUSE_TAG forSegment: TOOLBAR_PAUSE_TAG];
-        [segmentedControl setImage: [NSImage templateImageNamed: @"ToolbarPauseSelectedTemplate"] forSegment: TOOLBAR_PAUSE_TAG];
+        [segmentedControl setImage: [NSImage imageNamed: @"ToolbarPauseSelectedTemplate"] forSegment: TOOLBAR_PAUSE_TAG];
         [segmentedCell setToolTip: NSLocalizedString(@"Pause selected transfers",
                                     "Selected toolbar item -> tooltip") forSegment: TOOLBAR_PAUSE_TAG];
 
         [segmentedCell setTag: TOOLBAR_RESUME_TAG forSegment: TOOLBAR_RESUME_TAG];
-        [segmentedControl setImage: [NSImage templateImageNamed: @"ToolbarResumeSelectedTemplate"] forSegment: TOOLBAR_RESUME_TAG];
+        [segmentedControl setImage: [NSImage imageNamed: @"ToolbarResumeSelectedTemplate"] forSegment: TOOLBAR_RESUME_TAG];
         [segmentedCell setToolTip: NSLocalizedString(@"Resume selected transfers",
                                     "Selected toolbar item -> tooltip") forSegment: TOOLBAR_RESUME_TAG];
 
@@ -3815,7 +3812,7 @@ static void removeKeRangerRansomware()
         [item setLabel: NSLocalizedString(@"Filter", "Filter toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Toggle Filter", "Filter toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Toggle the filter bar", "Filter toolbar item -> tooltip")];
-        [item setImage: [NSImage templateImageNamed: @"ToolbarFilterTemplate"]];
+        [item setImage: [NSImage imageNamed: @"ToolbarFilterTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(toggleFilterBar:)];
 
@@ -3829,7 +3826,7 @@ static void removeKeRangerRansomware()
         [item setLabel: NSLocalizedString(@"Quick Look", "QuickLook toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Quick Look", "QuickLook toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Quick Look", "QuickLook toolbar item -> tooltip")];
-        [item setImage: [NSImage templateImageNamed: NSImageNameQuickLookTemplate]];
+        [item setImage: [NSImage imageNamed: NSImageNameQuickLookTemplate]];
         [item setTarget: self];
         [item setAction: @selector(toggleQuickLook:)];
         [item setVisibilityPriority: NSToolbarItemVisibilityPriorityLow];

@@ -475,8 +475,7 @@
                                                PRIORITY_ICON_WIDTH, PRIORITY_ICON_HEIGHT);
 
         NSColor * priorityColor = [self backgroundStyle] == NSBackgroundStyleDark ? [NSColor whiteColor] : [NSColor darkGrayColor];
-        NSImage * priorityImage = [[NSImage templateImageNamed: ([torrent priority] == TR_PRI_HIGH 
-                                    ? @"PriorityHighTemplate" : @"PriorityLowTemplate")] imageWithColor: priorityColor];
+        NSImage * priorityImage = [[NSImage imageNamed: ([torrent priority] == TR_PRI_HIGH ? @"PriorityHighTemplate" : @"PriorityLowTemplate")] imageWithColor: priorityColor];
         [priorityImage drawInRect: priorityRect fromRect: NSZeroRect operation: NSCompositeSourceOver fraction: 1.0 respectFlipped: YES hints: nil];
     }
 

@@ -130,7 +130,7 @@
         {
             //if ([self backgroundStyle] != NSBackgroundStyleDark)
             {
-                NSImage * image = [[NSImage templateImageNamed: @"PriorityNormalTemplate"] imageWithColor: [NSColor lightGrayColor]];
+                NSImage * image = [[NSImage imageNamed: @"PriorityNormalTemplate"] imageWithColor: [NSColor lightGrayColor]];
                 [images addObject: image];
                 totalWidth = [image size].width;
             }
@@ -142,19 +142,19 @@
             totalWidth = 0.0;
             if ([priorities containsObject: @(TR_PRI_LOW)])
             {
-                NSImage * image = [[NSImage templateImageNamed: @"PriorityLowTemplate"] imageWithColor: priorityColor];
+                NSImage * image = [[NSImage imageNamed: @"PriorityLowTemplate"] imageWithColor: priorityColor];
                 [images addObject: image];
                 totalWidth += [image size].width;
             }
             if ([priorities containsObject: @(TR_PRI_NORMAL)])
             {
-                NSImage * image = [[NSImage templateImageNamed: @"PriorityNormalTemplate"] imageWithColor: priorityColor];
+                NSImage * image = [[NSImage imageNamed: @"PriorityNormalTemplate"] imageWithColor: priorityColor];
                 [images addObject: image];
                 totalWidth += [image size].width;
             }
             if ([priorities containsObject: @(TR_PRI_HIGH)])
             {
-                NSImage * image = [[NSImage templateImageNamed: @"PriorityHighTemplate"] imageWithColor: priorityColor];
+                NSImage * image = [[NSImage imageNamed: @"PriorityHighTemplate"] imageWithColor: priorityColor];
                 [images addObject: image];
                 totalWidth += [image size].width;
             }

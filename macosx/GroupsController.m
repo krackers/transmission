@@ -22,7 +22,6 @@
 
 #import "GroupsController.h"
 #import "NSMutableArrayAdditions.h"
-#import "NSImageAdditions.h"
 
 #define ICON_WIDTH 16.0
 #define ICON_WIDTH_SMALL 12.0
@@ -147,7 +146,7 @@ GroupsController * fGroupsInstance = nil;
 {
     NSInteger orderIndex = [self rowValueForIndex: index];
     return orderIndex != -1 ? [self imageForGroup: fGroups[orderIndex]]
-                            : [NSImage templateImageNamed: @"GroupsNoneTemplate"];
+                            : [NSImage imageNamed: @"GroupsNoneTemplate"];
 }
 
 - (NSColor *) colorForIndex: (NSInteger) index
@@ -291,7 +290,7 @@ GroupsController * fGroupsInstance = nil;
     [item setTarget: target];
     [item setTag: -1];
 
-    NSImage * icon = [NSImage templateImageNamed: @"GroupsNoneTemplate"];
+    NSImage * icon = [NSImage imageNamed: @"GroupsNoneTemplate"];
     if (small)
     {
         icon = [icon copy];
