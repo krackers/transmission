@@ -4028,7 +4028,12 @@ static void atomPulse(evutil_socket_t foo UNUSED, short bar UNUSED, void* vmgr)
 /* is this atom someone that we'd want to initiate a connection to? */
 static bool isPeerCandidate(tr_torrent const* tor, struct peer_atom* atom, time_t const now)
 {
-    /* not if we're both seeds */
+    // Don't connect if we're both seeds
+    // Note that this single line is what effectively helps us bypass
+    // NAT by initating the "reverse-connection" to peers wanting to download
+    // from us. It is the equivalent of seeding_outgoing_connections
+    // behavior in libtorrent (deluge/qbittorrent), see
+    // https://forum.transmissionbt.com/viewtopic.php?t=17778
     if (tr_torrentIsSeed(tor) && atomIsSeed(atom))
     {
         return false;
