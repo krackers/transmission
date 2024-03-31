@@ -67,19 +67,23 @@ tr_preallocation_mode;
 // only as last resort.
 typedef enum
 {
-    // Accept any type of incoming
-    // (for encrypted incoming handshake try to negotiate
-    // for header-only encryption over full-message encryption).
-    // Outgoing tries to prefer handshake-only encryption over full-message
-    // but will fallback to plaintext handshake if needed.
+    // Incoming:
+    //   * Accept both encrypted and unencrypted handshakes
+    //   * Prefer header-only encryption over full-message encryption
+    // Outgoing:
+    //   * Use encrypted handshake
+    //   * Offer both handshake-only and full-message encryptoin
+    //   * Fallback to plaintext handshake if peer does not support encryption.
     TR_CLEAR_PREFERRED,
-    // Accept any type of incoming
-    // (for encrypted incoming handshake try to negotiate for full-message
-    // over header-only encryption).
-    // Outgoing tries to prefer full-message encryption over handshake-only
-    // but will fallback to plaintext handshake if needed.
+    // Incoming:
+    //   * Accept both encrypted and unencrypted handshakes
+    //   * Prefer full-message encryption over header-only
+    // Outgoing:
+    //   * Use encrypted handshake
+    //   * Offer both handshake-only and full-message encryptoin
+    //   * Fallback to plaintext handshake if peer does not support encryption.
     TR_ENCRYPTION_PREFERRED,
-    // Require both incoming/outgoing to be full-message encryption.
+    // Require both incoming/outgoing to be full-message encryption. No plaintext fallback.
     TR_ENCRYPTION_REQUIRED
 }
 tr_encryption_mode;

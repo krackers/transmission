@@ -333,13 +333,18 @@ static uint32_t getCryptoProvide(tr_handshake const* handshake)
     switch (handshake->encryptionMode)
     {
     case TR_ENCRYPTION_REQUIRED:
-    case TR_ENCRYPTION_PREFERRED:
         provide |= CRYPTO_PROVIDE_CRYPTO;
         break;
-
+    // For outgoing connections, the other party chooses
+    // the crypto method. So if we want to ensure compatibility
+    // we must provide option for both (there's no way for you
+    // to indicate priority).
+    case TR_ENCRYPTION_PREFERRED:
     case TR_CLEAR_PREFERRED:
         provide |= CRYPTO_PROVIDE_CRYPTO | CRYPTO_PROVIDE_PLAINTEXT;
         break;
+    default:
+        CHECK(false);
     }
 
     return provide;
