@@ -91,8 +91,17 @@
 {
     //set group columns to show ratio, needs to be in awakeFromNib to size columns correctly
     [self setGroupStatusColumns];
-
     [[NSNotificationCenter defaultCenter] addObserver: self selector: @selector(setNeedsDisplay) name: @"RefreshTorrentTable" object: nil];
+}
+
+- (void) display {
+    [super display];
+    // Do this after the very first display, since apparently setting it inside
+    // awakeFromNib causes weird drawing glitches.
+    // Needed to get glitch-free animation when collapsing/expanding groups.
+    if (![self canDrawSubviewsIntoLayer]) {
+        [self setCanDrawSubviewsIntoLayer: YES];
+    }
 }
 
 - (BOOL) isGroupCollapsed: (NSInteger) value
