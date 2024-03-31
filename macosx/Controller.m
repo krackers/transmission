@@ -2926,13 +2926,17 @@ static void removeKeRangerRansomware()
             NSInteger group = [item groupIndex];
             return [[GroupsController groups] imageForIndex: group];
         }
-        else if ([ident isEqualToString: @"DL Image"])
-            return [NSImage imageNamed: @"DownArrowGroupTemplate"];
-        else if ([ident isEqualToString: @"UL Image"])
-            return [NSImage imageNamed: [fDefaults boolForKey: @"DisplayGroupRowRatio"]
-                                        ? @"YingYangGroupTemplate" : @"UpArrowGroupTemplate"];
-        else
-        {
+        else if ([ident isEqualToString: @"DL Image"]) {
+            NSImage * image = [NSImage imageNamed: @"DownArrowGroupTemplate"];
+            [image setTemplate:YES];
+            return image;
+        } else if ([ident isEqualToString: @"UL Image"]) {
+            NSImage * image = [NSImage imageNamed: [fDefaults boolForKey: @"DisplayGroupRowRatio"]
+                               ? @"YingYangGroupTemplate" : @"UpArrowGroupTemplate"];
+            [image setTemplate:YES];
+            return image;
+        }
+        else {
             TorrentGroup * group = (TorrentGroup *)item;
 
             if ([fDefaults boolForKey: @"DisplayGroupRowRatio"])
@@ -3436,6 +3440,7 @@ static void removeKeRangerRansomware()
         fFilterBar = [[FilterBarController alloc] init];
 
         NSView * contentView = [fWindow contentView];
+        [contentView setWantsLayer: YES];
         const NSSize windowSize = [contentView convertSize: [fWindow frame].size fromView: nil];
 
         NSRect filterBarFrame = [[fFilterBar view] frame];
@@ -3642,212 +3647,231 @@ static void removeKeRangerRansomware()
     if ([ident isEqualToString: TOOLBAR_CREATE])
     {
         ButtonToolbarItem * item = [self standardToolbarButtonWithIdentifier: ident];
-
+        NSImage * image = [NSImage imageNamed: @"ToolbarCreateTemplate"];
+        [image setTemplate:YES];
+        [item setImage: image];
+        
         [item setLabel: NSLocalizedString(@"Create", "Create toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Create Torrent File", "Create toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Create torrent file", "Create toolbar item -> tooltip")];
-        [item setImage: [NSImage imageNamed: @"ToolbarCreateTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(createFile:)];
         [item setAutovalidates: NO];
-
+        
         return item;
     }
     else if ([ident isEqualToString: TOOLBAR_OPEN_FILE])
     {
         ButtonToolbarItem * item = [self standardToolbarButtonWithIdentifier: ident];
-
+        NSImage * image = [NSImage imageNamed: @"ToolbarOpenTemplate"];
+        [image setTemplate:YES];
+        [item setImage: image];
+        
         [item setLabel: NSLocalizedString(@"Open", "Open toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Open Torrent Files", "Open toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Open torrent files", "Open toolbar item -> tooltip")];
-        [item setImage: [NSImage imageNamed: @"ToolbarOpenTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(openShowSheet:)];
         [item setAutovalidates: NO];
-
+        
         return item;
     }
     else if ([ident isEqualToString: TOOLBAR_OPEN_WEB])
     {
         ButtonToolbarItem * item = [self standardToolbarButtonWithIdentifier: ident];
-
+        NSImage * image = [NSImage imageNamed: @"ToolbarOpenWebTemplate"];
+        [image setTemplate:YES];
+        [item setImage: image];
+        
         [item setLabel: NSLocalizedString(@"Open Address", "Open address toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Open Torrent Address", "Open address toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Open torrent web address", "Open address toolbar item -> tooltip")];
-        [item setImage: [NSImage imageNamed: @"ToolbarOpenWebTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(openURLShowSheet:)];
         [item setAutovalidates: NO];
-
+        
         return item;
     }
     else if ([ident isEqualToString: TOOLBAR_REMOVE])
     {
         ButtonToolbarItem * item = [self standardToolbarButtonWithIdentifier: ident];
-
+        NSImage * image = [NSImage imageNamed: @"ToolbarRemoveTemplate"];
+        [image setTemplate:YES];
+        [item setImage: image];
+        
         [item setLabel: NSLocalizedString(@"Remove", "Remove toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Remove Selected", "Remove toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Remove selected transfers", "Remove toolbar item -> tooltip")];
-        [item setImage: [NSImage imageNamed: @"ToolbarRemoveTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(removeNoDelete:)];
         [item setVisibilityPriority: NSToolbarItemVisibilityPriorityHigh];
-
+        
         return item;
     }
     else if ([ident isEqualToString: TOOLBAR_INFO])
     {
         ButtonToolbarItem * item = [self standardToolbarButtonWithIdentifier: ident];
+        NSImage * image = [NSImage imageNamed: @"ToolbarInfoTemplate"];
+        [image setTemplate:YES];
+        [item setImage: image];
+        
         [[(NSButton *)[item view] cell] setShowsStateBy: NSContentsCellMask]; //blue when enabled
-
         [item setLabel: NSLocalizedString(@"Inspector", "Inspector toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Toggle Inspector", "Inspector toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Toggle the torrent inspector", "Inspector toolbar item -> tooltip")];
-        [item setImage: [NSImage imageNamed: @"ToolbarInfoTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(showInfo:)];
-
+        
         return item;
     }
     else if ([ident isEqualToString: TOOLBAR_PAUSE_RESUME_ALL])
     {
         GroupToolbarItem * groupItem = [[GroupToolbarItem alloc] initWithItemIdentifier: ident];
-
+        
         NSSegmentedControl * segmentedControl = [[NSSegmentedControl alloc] initWithFrame: NSZeroRect];
         [segmentedControl setCell: [[ToolbarSegmentedCell alloc] init]];
         [groupItem setView: segmentedControl];
         NSSegmentedCell * segmentedCell = (NSSegmentedCell *)[segmentedControl cell];
-
+        
         if ([NSApp isOnYosemiteOrBetter]) {
             segmentedControl.segmentStyle = NSSegmentStyleSeparated;
         }
-
+        
         [segmentedControl setSegmentCount: 2];
         [segmentedCell setTrackingMode: NSSegmentSwitchTrackingMomentary];
-
+        
         const NSSize groupSize = NSMakeSize(72.0, 25.0);
         [groupItem setMinSize: groupSize];
         [groupItem setMaxSize: groupSize];
-
+        
         [groupItem setLabel: NSLocalizedString(@"Apply All", "All toolbar item -> label")];
         [groupItem setPaletteLabel: NSLocalizedString(@"Pause / Resume All", "All toolbar item -> palette label")];
         [groupItem setTarget: self];
         [groupItem setAction: @selector(allToolbarClicked:)];
-
+        
         [groupItem setIdentifiers: @[TOOLBAR_PAUSE_ALL, TOOLBAR_RESUME_ALL]];
-
-        [segmentedCell setTag: TOOLBAR_PAUSE_TAG forSegment: TOOLBAR_PAUSE_TAG];
-        [segmentedControl setImage: [NSImage imageNamed: @"ToolbarPauseAllTemplate"] forSegment: TOOLBAR_PAUSE_TAG];
+        NSImage * pauseImage = [NSImage imageNamed: @"ToolbarPauseAllTemplate"];
+        [pauseImage setTemplate:YES];
+        [segmentedControl setImage: pauseImage forSegment: TOOLBAR_PAUSE_TAG];
+        
+        NSImage * resumeImage = [NSImage imageNamed: @"ToolbarResumeAllTemplate"];
+        [resumeImage setTemplate:YES];
+        [segmentedControl setImage: resumeImage forSegment: TOOLBAR_RESUME_TAG];
+        
         if (@available(macOS 10.10, *)) {
             // Default inferred style works fine
         } else {
             [segmentedControl setSegmentStyle: NSSegmentStyleTexturedSquare];
         }
         [segmentedCell setToolTip: NSLocalizedString(@"Pause all transfers",
-                                    "All toolbar item -> tooltip") forSegment: TOOLBAR_PAUSE_TAG];
-
-        [segmentedCell setTag: TOOLBAR_RESUME_TAG forSegment: TOOLBAR_RESUME_TAG];
-        [segmentedControl setImage: [NSImage imageNamed: @"ToolbarResumeAllTemplate"] forSegment: TOOLBAR_RESUME_TAG];
+                                                     "All toolbar item -> tooltip") forSegment: TOOLBAR_PAUSE_TAG];
+        
         [segmentedCell setToolTip: NSLocalizedString(@"Resume all transfers",
-                                    "All toolbar item -> tooltip") forSegment: TOOLBAR_RESUME_TAG];
-
+                                                     "All toolbar item -> tooltip") forSegment: TOOLBAR_RESUME_TAG];
+        
         [groupItem createMenu: @[NSLocalizedString(@"Pause All", "All toolbar item -> label"),
-                                        NSLocalizedString(@"Resume All", "All toolbar item -> label")]];
-
-
+                                 NSLocalizedString(@"Resume All", "All toolbar item -> label")]];
+        
         [groupItem setVisibilityPriority: NSToolbarItemVisibilityPriorityHigh];
-
+        
         return groupItem;
     }
     else if ([ident isEqualToString: TOOLBAR_PAUSE_RESUME_SELECTED])
     {
         GroupToolbarItem * groupItem = [[GroupToolbarItem alloc] initWithItemIdentifier: ident];
-
+        
         NSSegmentedControl * segmentedControl = [[NSSegmentedControl alloc] initWithFrame: NSZeroRect];
         [segmentedControl setCell: [[ToolbarSegmentedCell alloc] init]];
         [groupItem setView: segmentedControl];
         NSSegmentedCell * segmentedCell = (NSSegmentedCell *)[segmentedControl cell];
-
-        if ([NSApp isOnYosemiteOrBetter]) {
-            segmentedControl.segmentStyle = NSSegmentStyleSeparated;
-        }
-
+        
         [segmentedControl setSegmentCount: 2];
         [segmentedCell setTrackingMode: NSSegmentSwitchTrackingMomentary];
-
+        
         const NSSize groupSize = NSMakeSize(72.0, 25.0);
         [groupItem setMinSize: groupSize];
         [groupItem setMaxSize: groupSize];
-
+        
+        if ([NSApp isOnYosemiteOrBetter]) {
+            segmentedControl.segmentStyle = NSSegmentStyleSeparated;
+        }
+        
         [groupItem setLabel: NSLocalizedString(@"Apply Selected", "Selected toolbar item -> label")];
         [groupItem setPaletteLabel: NSLocalizedString(@"Pause / Resume Selected", "Selected toolbar item -> palette label")];
         [groupItem setTarget: self];
         [groupItem setAction: @selector(selectedToolbarClicked:)];
-
+        
         [groupItem setIdentifiers: @[TOOLBAR_PAUSE_SELECTED, TOOLBAR_RESUME_SELECTED]];
-
-        [segmentedCell setTag: TOOLBAR_PAUSE_TAG forSegment: TOOLBAR_PAUSE_TAG];
-        [segmentedControl setImage: [NSImage imageNamed: @"ToolbarPauseSelectedTemplate"] forSegment: TOOLBAR_PAUSE_TAG];
+        NSImage * pauseImage = [NSImage imageNamed: @"ToolbarPauseSelectedTemplate"];
+        [pauseImage setTemplate:YES];
+        [segmentedControl setImage: pauseImage forSegment: TOOLBAR_PAUSE_TAG];
+        
+        NSImage * resumeImage = [NSImage imageNamed: @"ToolbarResumeSelectedTemplate"];
+        [resumeImage setTemplate:YES];
+        [segmentedControl setImage: resumeImage forSegment: TOOLBAR_RESUME_TAG];
+        
         [segmentedCell setToolTip: NSLocalizedString(@"Pause selected transfers",
-                                    "Selected toolbar item -> tooltip") forSegment: TOOLBAR_PAUSE_TAG];
-
-        [segmentedCell setTag: TOOLBAR_RESUME_TAG forSegment: TOOLBAR_RESUME_TAG];
-        [segmentedControl setImage: [NSImage imageNamed: @"ToolbarResumeSelectedTemplate"] forSegment: TOOLBAR_RESUME_TAG];
+                                                     "Selected toolbar item -> tooltip") forSegment: TOOLBAR_PAUSE_TAG];
         [segmentedCell setToolTip: NSLocalizedString(@"Resume selected transfers",
-                                    "Selected toolbar item -> tooltip") forSegment: TOOLBAR_RESUME_TAG];
-
+                                                     "Selected toolbar item -> tooltip") forSegment: TOOLBAR_RESUME_TAG];
+        
         [groupItem createMenu: @[NSLocalizedString(@"Pause Selected", "Selected toolbar item -> label"),
-                                        NSLocalizedString(@"Resume Selected", "Selected toolbar item -> label")]];
-
-
+                                 NSLocalizedString(@"Resume Selected", "Selected toolbar item -> label")]];
+        
         [groupItem setVisibilityPriority: NSToolbarItemVisibilityPriorityHigh];
-
+        
         return groupItem;
     }
     else if ([ident isEqualToString: TOOLBAR_FILTER])
     {
         ButtonToolbarItem * item = [self standardToolbarButtonWithIdentifier: ident];
+        NSImage * image = [NSImage imageNamed: @"ToolbarFilterTemplate"];
+        [image setTemplate:YES];
+        [item setImage: image];
+        
         [[(NSButton *)[item view] cell] setShowsStateBy: NSContentsCellMask]; //blue when enabled
-
         [item setLabel: NSLocalizedString(@"Filter", "Filter toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Toggle Filter", "Filter toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Toggle the filter bar", "Filter toolbar item -> tooltip")];
-        [item setImage: [NSImage imageNamed: @"ToolbarFilterTemplate"]];
         [item setTarget: self];
         [item setAction: @selector(toggleFilterBar:)];
-
+        
         return item;
     }
     else if ([ident isEqualToString: TOOLBAR_QUICKLOOK])
     {
         ButtonToolbarItem * item = [self standardToolbarButtonWithIdentifier: ident];
+        NSImage * image = [NSImage imageNamed: NSImageNameQuickLookTemplate];
+        [image setTemplate:YES];
+        [item setImage: image];
+        
         [[(NSButton *)[item view] cell] setShowsStateBy: NSContentsCellMask]; //blue when enabled
-
         [item setLabel: NSLocalizedString(@"Quick Look", "QuickLook toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Quick Look", "QuickLook toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Quick Look", "QuickLook toolbar item -> tooltip")];
-        [item setImage: [NSImage imageNamed: NSImageNameQuickLookTemplate]];
         [item setTarget: self];
         [item setAction: @selector(toggleQuickLook:)];
         [item setVisibilityPriority: NSToolbarItemVisibilityPriorityLow];
-
+        
         return item;
     }
     else if ([ident isEqualToString: TOOLBAR_SHARE])
     {
         ShareToolbarItem * item = [self toolbarButtonWithIdentifier: ident forToolbarButtonClass: [ShareToolbarItem class]];
-
+        NSImage * image = [NSImage imageNamed: NSImageNameShareTemplate];
+        [image setTemplate:YES];
+        [item setImage: image];
+        
         [item setLabel: NSLocalizedString(@"Share", "Share toolbar item -> label")];
         [item setPaletteLabel: NSLocalizedString(@"Share", "Share toolbar item -> palette label")];
         [item setToolTip: NSLocalizedString(@"Share torrent file", "Share toolbar item -> tooltip")];
-        [item setImage: [NSImage imageNamed: NSImageNameShareTemplate]];
         [item setVisibilityPriority: NSToolbarItemVisibilityPriorityLow];
-
+        
         NSButton *itemButton = (NSButton *)[item view];
         [itemButton setTarget: self];
         [itemButton setAction: @selector(showToolbarShare:)];
         [itemButton sendActionOn:NSLeftMouseDownMask];
-
+        
         return item;
     }
     else
