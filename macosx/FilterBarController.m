@@ -61,6 +61,8 @@
     [[fSeedFilterButton cell] setBackgroundStyle: NSBackgroundStyleRaised];
     [[fPauseFilterButton cell] setBackgroundStyle: NSBackgroundStyleRaised];
 
+    // Work around bug where search field overlaps with the titlebar
+    [fSearchField setWantsLayer: NO];
     [[[[fSearchField cell] searchMenuTemplate] itemWithTag: FILTER_TYPE_TAG_NAME] setTitle:
         NSLocalizedString(@"Name", "Filter Bar -> filter menu")];
     [[[[fSearchField cell] searchMenuTemplate] itemWithTag: FILTER_TYPE_TAG_TRACKER] setTitle:

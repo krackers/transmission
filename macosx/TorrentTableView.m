@@ -91,7 +91,8 @@
 {
     //set group columns to show ratio, needs to be in awakeFromNib to size columns correctly
     [self setGroupStatusColumns];
-
+    // Work around a bug where there is a black rectangle shown when collapsing groups.
+    [self setWantsLayer: YES];
     [[NSNotificationCenter defaultCenter] addObserver: self selector: @selector(setNeedsDisplay) name: @"RefreshTorrentTable" object: nil];
 }
 
