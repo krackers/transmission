@@ -94,14 +94,14 @@
     [[NSNotificationCenter defaultCenter] addObserver: self selector: @selector(setNeedsDisplay) name: @"RefreshTorrentTable" object: nil];
 }
 
-- (void) display {
-    [super display];
-    // Do this after the very first display, since apparently setting it inside
-    // awakeFromNib causes weird drawing glitches.
+- (void)expandItem:(id)item {
     // Needed to get glitch-free animation when collapsing/expanding groups.
+    // Doing this too early (e.g. inside awakeFromNib) causes weird drawing glitches
+    // so this place was selected arbitrarily.
     if (![self canDrawSubviewsIntoLayer]) {
         [self setCanDrawSubviewsIntoLayer: YES];
     }
+    [super expandItem: item];
 }
 
 - (BOOL) isGroupCollapsed: (NSInteger) value
