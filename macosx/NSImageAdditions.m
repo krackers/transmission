@@ -40,10 +40,9 @@
     return coloredImage;
 }
 
-+ (NSImage *) templateImageNamed: (NSString *) name {
++ (void) makeTemplateFor: (NSString *) name {
     NSImage *img = [NSImage imageNamed: name];
     [img setTemplate: YES];
-    return img;
 }
 
 @end

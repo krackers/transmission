@@ -63,6 +63,7 @@
 #import "NSApplicationAdditions.h"
 #import "NSMutableArrayAdditions.h"
 #import "NSStringAdditions.h"
+#import "NSImageAdditions.h"
 #import "ExpandedPathToPathTransformer.h"
 #import "ExpandedPathToIconTransformer.h"
 
@@ -229,6 +230,32 @@ static void removeKeRangerRansomware()
     NSLog(@"OSX.KeRanger.A ransomware removal completed, proceeding to normal operation");
 }
 
+const NSString* kTemplateIcons[] = {
+    @"CleanupTemplate",
+    @"PriorityLowTemplate",
+    @"ToolbarFilterTemplate",
+    @"ToolbarInfoTemplate",
+    @"ToolbarOpenTemplate",
+    @"ToolbarOpenWebTemplate",
+    @"ToolbarPauseAllTemplate",
+    @"ToolbarPauseSelectedTemplate",
+    @"DownArrowGroupTemplate",
+    @"ToolbarResumeAllTemplate",
+    @"ToolbarResumeSelectedTemplate",
+    @"TurtleTemplate",
+    @"UpArrowGroupTemplate",
+    @"UpArrowTemplate",
+    @"DownArrowTemplate",
+    @"YingYangTemplate",
+    @"GroupsNoneTemplate",
+    @"PinTemplate",
+    @"PriorityHighTemplate",
+    @"PriorityNormalTemplate",
+    @"ToolbarCreateTemplate",
+    @"ToolbarRemoveTemplate",
+    @"YingYangGroupTemplate"
+};
+
 @implementation Controller
 
 #warning remove ivars in header when 64-bit only (or it compiles in 32-bit mode)
@@ -256,6 +283,15 @@ static void removeKeRangerRansomware()
 
         //kill ourselves right away
         exit(0);
+    }
+
+    // Terrible hack to work around the fact that template-image xcassets are broken
+    // on 10.9. Ideally we should see if we can revert back to non-template, but this
+    // will do for now.
+    for (int i = 0; i < sizeof(kTemplateIcons)/sizeof(kTemplateIcons[0]); i++) {
+        // This takes advantage of the fact that all NSImages of the same name
+        // point to the same object.
+        [NSImage makeTemplateFor: kTemplateIcons[i]];
     }
 
     [[NSUserDefaults standardUserDefaults] registerDefaults: [NSDictionary dictionaryWithContentsOfFile:
