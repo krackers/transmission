@@ -142,7 +142,10 @@ err:
     return EILSEQ;
 }
 
-static tr_variant* get_node(tr_ptrArray* stack, tr_quark* key, tr_variant* top, int* err)
+// -1 is used to signal unset key. Note that key = 0 (empty string) can be a valid value 
+// we need to add for hybrid torrents, see https://github.com/transmission/transmission/pull/1964/
+// N.b. tr_quark is typedef as size_t so the wrap around behavior is well-defined
+static tr_variant* get_node(tr_ptrArray* stack, tr_quark* current_key, tr_variant* top, int* err)
 {
     tr_variant* node = NULL;
 
@@ -158,10 +161,10 @@ static tr_variant* get_node(tr_ptrArray* stack, tr_quark* key, tr_variant* top, 
         {
             node = tr_variantListAdd(parent);
         }
-        else if (*key != 0 && tr_variantIsDict(parent))
+        else if ((*current_key != (tr_quark) -1) && tr_variantIsDict(parent))
         {
-            node = tr_variantDictAdd(parent, *key);
-            *key = 0;
+            node = tr_variantDictAdd(parent, *current_key);
+            *current_key = (tr_quark) -1;
         }
         else
         {
@@ -183,7 +186,7 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
     uint8_t const* buf = buf_in;
     uint8_t const* bufend = bufend_in;
     tr_ptrArray stack = TR_PTR_ARRAY_INIT;
-    tr_quark key = 0;
+    tr_quark current_key = (tr_quark) -1;
 
     tr_variantInit(top, 0);
 
@@ -212,7 +215,7 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
 
             buf = end;
 
-            if ((v = get_node(&stack, &key, top, &err)) != NULL)
+            if ((v = get_node(&stack, &current_key, top, &err)) != NULL)
             {
                 tr_variantInitInt(v, val);
             }
@@ -223,7 +226,7 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
 
             ++buf;
 
-            if ((v = get_node(&stack, &key, top, &err)) != NULL)
+            if ((v = get_node(&stack, &current_key, top, &err)) != NULL)
             {
                 tr_variantInitList(v, 0);
                 tr_ptrArrayAppend(&stack, v);
@@ -235,7 +238,7 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
 
             ++buf;
 
-            if ((v = get_node(&stack, &key, top, &err)) != NULL)
+            if ((v = get_node(&stack, &current_key, top, &err)) != NULL)
             {
                 tr_variantInitDict(v, 0);
                 tr_ptrArrayAppend(&stack, v);
@@ -245,7 +248,7 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
         {
             ++buf;
 
-            if (tr_ptrArrayEmpty(&stack) || key != 0)
+            if (tr_ptrArrayEmpty(&stack) || (current_key != (tr_quark) -1))
             {
                 err = EILSEQ;
                 break;
@@ -274,11 +277,17 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
 
             buf = end;
 
-            if (key == 0 && !tr_ptrArrayEmpty(&stack) && tr_variantIsDict(tr_ptrArrayBack(&stack)))
+            if ((current_key == (tr_quark) -1) && !tr_ptrArrayEmpty(&stack) 
+                && tr_variantIsDict(tr_ptrArrayBack(&stack)))
             {
-                key = tr_quark_new(str, str_len);
+                // The return value of tr_quark_new should never be -1
+                // (this is guaranteed by implementation that 0 <= ret <= TR_N_KEYS if it is a pre-defined
+                // constant, or it is TR_N_KEYS + i where i is index into runtime string array. If that
+                // array becomes large enough so as to cause size_t wrap around, we have bigger problems... )
+                current_key = tr_quark_new(str, str_len);
+                CHECK(current_key != (tr_quark) -1);
             }
-            else if ((v = get_node(&stack, &key, top, &err)) != NULL)
+            else if ((v = get_node(&stack, &current_key, top, &err)) != NULL)
             {
                 tr_variantInitStr(v, str, str_len);
             }
