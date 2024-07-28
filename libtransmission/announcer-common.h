@@ -30,13 +30,13 @@ enum
      * This is only an upper bound: if the tracker complains about
      * length, announcer will incrementally lower the batch size.
      */
-    TR_MULTISCRAPE_MAX = 100
+    TR_MULTISCRAPE_MAX = 60
 };
 
 typedef struct
 {
     /* the scrape URL */
-    char* url;
+    const char* url;
 
     /* the name to use when deep logging is enabled */
     char log_name[128];
@@ -109,9 +109,12 @@ void tr_tracker_udp_scrape(tr_session* session, tr_scrape_request const* req, tr
 
 typedef enum
 {
+    /* Note: the ordering of this enum's values is important to
+     * announcer.c's tr_tier.announce_event_priority. If changing
+     * the enum, ensure announcer.c is compatible with the change. */
     TR_ANNOUNCE_EVENT_NONE,
-    TR_ANNOUNCE_EVENT_COMPLETED,
     TR_ANNOUNCE_EVENT_STARTED,
+    TR_ANNOUNCE_EVENT_COMPLETED,
     TR_ANNOUNCE_EVENT_STOPPED
 }
 tr_announce_event;
