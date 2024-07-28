@@ -347,7 +347,7 @@ struct tr_peer_socket tr_netOpenPeerSocket(tr_session* session, tr_address const
         ret = tr_peer_socket_tcp_create(s);
     }
 
-    tr_logAddDeep(__FILE__, __LINE__, NULL, "New OUTGOING connection %" PRIdMAX " (%s)", (intmax_t)s,
+    tr_logAddDeepNamed(NULL, "New OUTGOING connection %" PRIdMAX " (%s)", (intmax_t)s,
         tr_peerIoAddrStr(addr, port));
 
     return ret;

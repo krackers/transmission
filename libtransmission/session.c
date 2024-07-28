@@ -173,7 +173,7 @@ static void accept_incoming_peer(evutil_socket_t fd, short what UNUSED, void* vs
 
     if (clientSocket != TR_BAD_SOCKET)
     {
-        tr_logAddDeep(__FILE__, __LINE__, NULL, "new incoming connection %" PRIdMAX " (%s)", (intmax_t)clientSocket,
+        tr_logAddDeepNamed(NULL, "new incoming connection %" PRIdMAX " (%s)", (intmax_t)clientSocket,
             tr_peerIoAddrStr(&clientAddr, clientPort));
         tr_peerMgrAddIncoming(session->peerMgr, &clientAddr, clientPort, tr_peer_socket_tcp_create(clientSocket));
     }
