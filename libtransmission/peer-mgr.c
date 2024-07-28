@@ -2484,7 +2484,8 @@ void tr_peerMgrStartTorrent(tr_torrent* tor)
     s->maxPeers = tor->maxConnectedPeers;
     s->pieceSortState = PIECES_UNSORTED;
 
-    rechokePulse(0, 0, s->manager);
+    // rechoke soon
+    tr_timerAddMsec(s->manager->rechokeTimer, 100);
 }
 
 static void removeAllPeers(tr_swarm*);
