@@ -3039,14 +3039,12 @@ int tr_sessionCountQueueFreeSlots(tr_session* session, tr_direction dir)
         {
             if (tr_torrentGetActivity(tor) == activity)
             {
-                ++active_count;
+                active_count += 1;
+                /* if we've reached the limit, no need to keep counting */
+                if (active_count >= max)
+                    return 0;
             }
         }
-    }
-
-    if (active_count >= max)
-    {
-        return 0;
     }
 
     return max - active_count;
