@@ -1257,6 +1257,7 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
 
 static void handshakeTimeout(evutil_socket_t foo UNUSED, short bar UNUSED, void* handshake)
 {
+    dbgmsg((tr_handshake*)handshake, "Handshake timed out after %d seconds, aborting", HANDSHAKE_TIMEOUT_SEC);
     tr_handshakeAbort(handshake);
 }
 
