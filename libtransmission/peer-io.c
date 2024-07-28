@@ -982,12 +982,13 @@ int tr_peerIoReconnect(tr_peerIo* io)
 
     io_close_socket(io);
 
-    io->socket = tr_netOpenPeerSocket(session, &io->addr, io->port, io->isSeed);
+    struct tr_peer_socket socket = tr_netOpenPeerSocket(session, &io->addr, io->port, io->isSeed);
 
-    if (io->socket.type != TR_PEER_SOCKET_TYPE_TCP)
+    if (socket.type != TR_PEER_SOCKET_TYPE_TCP)
     {
         return -1;
     }
+    io->socket = socket;
 
     io->event_read = event_new(session->event_base, io->socket.handle.tcp, EV_READ, event_read_cb, io);
     io->event_write = event_new(session->event_base, io->socket.handle.tcp, EV_WRITE, event_write_cb, io);
