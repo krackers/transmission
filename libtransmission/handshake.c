@@ -1218,6 +1218,8 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
         // Try reconnecting via TCP
         if (tr_peerIoReconnect(handshake->io) == 0) {
             dbgmsg(handshake, "Retrying encrypted TCP handshake");
+            // The first message is always sent without encryption.
+            tr_peerIoSetEncryption(io, PEER_ENCRYPTION_NONE);
             sendYa(handshake);
             return;
         }
@@ -1236,6 +1238,7 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
         dbgmsg(handshake, "encrypted handshake failed");
         if (tr_peerIoReconnect(handshake->io) == 0) {
             dbgmsg(handshake, "Retrying plaintext TCP handshake...");
+            tr_peerIoSetEncryption(io, PEER_ENCRYPTION_NONE);
             sendPlainTextHandshake(handshake);
             return;
         }
