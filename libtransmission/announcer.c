@@ -854,7 +854,7 @@ static void dbgmsg_tier_announce_queue(tr_tier const* tier)
 }
 
 // higher priorities go to the front of the announce queue
-static void tier_update_announce_priority(tr_tier* tier)
+static void tier_recompute_announce_priority(tr_tier* tier)
 {
     int priority = -1;
 
@@ -866,14 +866,19 @@ static void tier_update_announce_priority(tr_tier* tier)
     tier->announce_event_priority = priority;
 }
 
-static void tier_announce_remove_trailing(tr_tier* tier, tr_announce_event e)
+// Does NOT automatically recompute priority, user must do that manually
+// based on return value.
+static bool tier_announce_remove_trailing(tr_tier* tier, tr_announce_event e)
 {
+    bool removed = false;
     while (tier->announce_event_count > 0 && tier->announce_events[tier->announce_event_count - 1] == e)
     {
         --tier->announce_event_count;
+        removed = true;
     }
-
-    tier_update_announce_priority(tier);
+    // Our tier's priority (max of all events) can only have changed
+    // if the event we removed is at least the max priority.
+    return (removed && e >= tier->announce_event_priority);
 }
 
 static void tier_announce_event_push(tr_tier* tier, tr_announce_event e, time_t announceAt)
@@ -882,6 +887,8 @@ static void tier_announce_event_push(tr_tier* tier, tr_announce_event e, time_t 
 
     dbgmsg_tier_announce_queue(tier);
     dbgmsg(tier, "queued \"%s\"", tr_announce_event_get_string(e));
+
+    bool recompute_priority = false;
 
     if (tier->announce_event_count > 0)
     {
@@ -898,19 +905,19 @@ static void tier_announce_event_push(tr_tier* tier, tr_announce_event e, time_t 
             }
 
             tier->announce_event_count = 0;
+            recompute_priority = true;
 
             if (has_completed)
             {
                 tier->announce_events[tier->announce_event_count++] = c;
-                tier_update_announce_priority(tier);
             }
         }
 
         /* special case #2: dump all empty strings leading up to this event */
-        tier_announce_remove_trailing(tier, TR_ANNOUNCE_EVENT_NONE);
+        recompute_priority |= tier_announce_remove_trailing(tier, TR_ANNOUNCE_EVENT_NONE);
 
         /* special case #3: no consecutive duplicates */
-        tier_announce_remove_trailing(tier, e);
+        recompute_priority |= tier_announce_remove_trailing(tier, e);
     }
 
     /* make room in the array for another event */
@@ -923,7 +930,10 @@ static void tier_announce_event_push(tr_tier* tier, tr_announce_event e, time_t 
     /* add it */
     tier->announceAt = announceAt;
     tier->announce_events[tier->announce_event_count++] = e;
-    tier_update_announce_priority(tier);
+    recompute_priority |= (e > tier->announce_event_priority);
+    
+    if (recompute_priority)
+        tier_recompute_announce_priority(tier);
 
     dbgmsg_tier_announce_queue(tier);
     dbgmsg(tier, "announcing in %d seconds", (int)difftime(announceAt, tr_time()));
@@ -935,7 +945,8 @@ static tr_announce_event tier_announce_event_pull(tr_tier* tier)
 
     tr_removeElementFromArray(tier->announce_events, 0, sizeof(tr_announce_event), tier->announce_event_count);
     --tier->announce_event_count;
-    tier_update_announce_priority(tier);
+    if (e >= tier->announce_event_priority)
+        tier_recompute_announce_priority(tier);
 
     return e;
 }
@@ -1664,6 +1675,7 @@ static inline int countDownloaders(tr_tier const* tier)
     return tracker == NULL ? 0 : tracker->downloaderCount + tracker->leecherCount;
 }
 
+// Returns 1 if vb is higher priority than va.
 static int compareAnnounceTiers(void const* va, void const* vb)
 {
     tr_tier const* a = (tr_tier const*)va;
