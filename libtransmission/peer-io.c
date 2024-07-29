@@ -871,6 +871,18 @@ static void io_close_socket(tr_peerIo* io)
         event_free(io->event_write);
         io->event_write = NULL;
     }
+
+    if (io->inbuf != NULL) {
+        evbuffer_drain(io->inbuf, evbuffer_get_length(io->inbuf));
+    }
+    if (io->outbuf != NULL) {
+        evbuffer_drain(io->outbuf, evbuffer_get_length(io->outbuf));
+    }
+    while (io->outbuf_datatypes != NULL)
+    {
+        peer_io_pull_datatype(io);
+    }
+    
 }
 
 static void io_dtor(void* vio)
@@ -886,6 +898,7 @@ static void io_dtor(void* vio)
     tr_bandwidthDestruct(&io->bandwidth);
     evbuffer_free(io->outbuf);
     evbuffer_free(io->inbuf);
+    io->inbuf = io->outbuf = NULL;
     io_close_socket(io);
     tr_cryptoDestruct(&io->crypto);
 
