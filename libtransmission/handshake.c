@@ -509,6 +509,9 @@ static ReadState readVC(tr_handshake* handshake, struct evbuffer* inbuf)
     /* note: this works w/o having to `unwind' the buffer if
      * we read too much, but it is pretty brute-force.
      * it would be nice to make this cleaner. */
+     // See https://github.com/transmission/transmission/pull/3471 for
+     // possible optimization and https://github.com/transmission/transmission/pull/6025
+     // for a fix of that.
     for (;;)
     {
         if (evbuffer_get_length(inbuf) < VC_LENGTH)
@@ -865,6 +868,7 @@ static ReadState readCryptoProvide(tr_handshake* handshake, struct evbuffer* inb
     tr_cryptoDecryptInit(handshake->crypto);
 
     tr_peerIoReadBytes(handshake->io, inbuf, vc_in, VC_LENGTH);
+    // TODO: Verify VC_IN is all zero?
 
     tr_peerIoReadUint32(handshake->io, inbuf, &crypto_provide);
     handshake->crypto_provide = crypto_provide;
@@ -1023,14 +1027,13 @@ static ReadState canRead(struct tr_peerIo* io, void* arg, size_t* piece)
     ReadState ret;
     tr_handshake* handshake = arg;
     struct evbuffer* inbuf = tr_peerIoGetReadBuffer(io);
-    bool readyForMore = true;
 
     /* no piece data in handshake */
     *piece = 0;
 
     dbgmsg(handshake, "handling canRead; state is [%s]", getStateName(handshake->state));
 
-    while (readyForMore)
+    do
     {
         switch (handshake->state)
         {
@@ -1040,7 +1043,10 @@ static ReadState canRead(struct tr_peerIo* io, void* arg, size_t* piece)
 
         case AWAITING_PEER_ID:
             ret = readPeerId(handshake, inbuf);
-            break;
+            // As this is a terminal state, if handshake was successful we should not
+            // loop again but instead bubble back up to the peer-io read loop (as we have
+            // changed the read callback).
+            return ret;
 
         case AWAITING_YA:
             ret = readYa(handshake, inbuf);
@@ -1063,8 +1069,9 @@ static ReadState canRead(struct tr_peerIo* io, void* arg, size_t* piece)
             break;
 
         case AWAITING_PAYLOAD_STREAM:
+            // This is the terminal state for incoming handshake.
             ret = readPayloadStream(handshake, inbuf);
-            break;
+            return ret;
 
         case AWAITING_YB:
             ret = readYb(handshake, inbuf);
@@ -1084,26 +1091,13 @@ static ReadState canRead(struct tr_peerIo* io, void* arg, size_t* piece)
 
         default:
             ret = READ_ERR;
-            TR_ASSERT_MSG(false, "unhandled handshake state %d", (int)handshake->state);
+            CHECK_MSG(false, "unhandled handshake state %d", (int)handshake->state);
         }
 
-        if (ret != READ_NOW)
-        {
-            readyForMore = false;
-        }
-        else if (handshake->state == AWAITING_PAD_C)
-        {
-            readyForMore = evbuffer_get_length(inbuf) >= handshake->pad_c_len;
-        }
-        else if (handshake->state == AWAITING_PAD_D)
-        {
-            readyForMore = evbuffer_get_length(inbuf) >= handshake->pad_d_len;
-        }
-        else if (handshake->state == AWAITING_IA)
-        {
-            readyForMore = evbuffer_get_length(inbuf) >= handshake->ia_len;
-        }
-    }
+    // If READ_NOW is requested, can optimize by directly looping in here
+    // instead of bubbling back up to peer-io read loop. This avoids
+    // some possibly expensive bookkeeping logic for number of bytes written/read.
+    } while (ret == READ_NOW);
 
     return ret;
 }
@@ -1139,7 +1133,9 @@ static ReadState tr_handshakeDone(tr_handshake* handshake, bool isOK)
 
     tr_handshakeFree(handshake);
 
-    return success ? READ_LATER : READ_ERR;
+    // The responding client of a handshake usually starts sending BT messages immediately after
+    // the handshake, so we need to return READ_NOW to ensure those messages are processed.
+    return success ? READ_NOW : READ_ERR;
 }
 
 void tr_handshakeAbort(tr_handshake* handshake)
