@@ -1239,8 +1239,7 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
     /* if the error happened while we were sending a public key, we might
      * have encountered a peer that doesn't do encryption... reconnect and
      * try a plaintext handshake */
-    if (io->socket.type == TR_PEER_SOCKET_TYPE_TCP &&
-       (handshake->state == AWAITING_YB || handshake->state == AWAITING_VC))
+    if (io->socket.type == TR_PEER_SOCKET_TYPE_TCP && handshake->state == AWAITING_YB)
     {
         resendPlainHandshake = true;
         dbgmsg(handshake, "Encrypted TCP handshake failed");
