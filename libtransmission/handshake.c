@@ -1159,10 +1159,7 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
     int errcode = errno;
     tr_handshake* handshake = vhandshake;
 
-    bool resendHandshake = false;
-
-
-    // Note that a connection could fail either because the peer does not support uTP
+    // Note that a uTP connection could fail either because the peer does not support uTP
     // or because it does not support encryption. rTorrent is the only notable client which
     // does not implement uTP. rTorrent supports encryption, but by default it is disabled
     // even for inbound connections. Deluge/qBitTorrent support both, but have an option
@@ -1191,11 +1188,13 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
     // We do make an effort to retry as encrypted rather than jumping to plaintext because many
     // clients may have the require-encryption enabled (many users misunderstand what it does, and such
     // users may have checked the box without understanding the details or conseqeuences).
+    bool resendPlainHandshake = false;
 
-    if (io->socket.type == TR_PEER_SOCKET_TYPE_UTP && !io->isIncoming && handshake->state == AWAITING_YB)
+    if (io->socket.type == TR_PEER_SOCKET_TYPE_UTP && !io->isIncoming && 
+        (handshake->state == AWAITING_YB || handshake->state == AWAITING_HANDSHAKE))
     {
         /* This peer probably doesn't speak uTP. */
-        dbgmsg(handshake, "uTP handshake failed");
+        dbgmsg(handshake, "uTP %s handshake failed", handshake->state == AWAITING_YB ? "encrypted" : "plaintext");
         tr_torrent* tor;
 
         if (tr_peerIoHasTorrentHash(io))
@@ -1216,38 +1215,48 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
             tr_peerMgrSetUtpFailed(tor, tr_peerIoGetAddress(io, NULL), true);
         }
 
-        // Try reconnecting via TCP
-        if (tr_peerIoReconnect(handshake->io) == 0) {
-            dbgmsg(handshake, "Retrying encrypted TCP handshake");
-            // The first message is always sent without encryption.
-            tr_peerIoSetEncryption(io, PEER_ENCRYPTION_NONE);
-            sendYa(handshake);
-            return;
+        // We would be in AWAITING_YB state if we started by sending out encrypted handshake
+        // In such a case we should retry as encrypted TCP handshake.
+        if (handshake->state == AWAITING_YB) {
+            if (tr_peerIoReconnect(handshake->io) == 0) {
+                dbgmsg(handshake, "Retrying with encrypted TCP handshake...");
+                // The first message is always sent without encryption.
+                tr_peerIoSetEncryption(io, PEER_ENCRYPTION_NONE);
+                sendYa(handshake);
+                return;
+            }
+        } else {
+            // If we sent out a plaintext uTP handshake, we would be in AWAITING_HANDSHAKE
+            // state. In such case we should retry as plaintext TCP. We might also
+            // be in AWAITING_HANDSHAKE if we completed the encrypted uTP handshake but
+            // then peer disconnected before sending the initial payload or something. We
+            // can't really distinguish the two, but latter should be rare.
+            resendPlainHandshake = true;
         }
+
     }
 
     /* if the error happened while we were sending a public key, we might
      * have encountered a peer that doesn't do encryption... reconnect and
      * try a plaintext handshake */
-    if ((handshake->state == AWAITING_YB || handshake->state == AWAITING_VC) &&
-        handshake->encryptionMode != TR_ENCRYPTION_REQUIRED)
+    if (io->socket.type == TR_PEER_SOCKET_TYPE_TCP &&
+       (handshake->state == AWAITING_YB || handshake->state == AWAITING_VC))
     {
-        // Note: Preserving original condition here, that doesn't explicitly filter on socket type
-        // or incoming/outgoing. Even though as far as I can see yb/vc states are only
-        // used for outgoing connections. We should never end up in a loop because
-        // each block switches the protocol type or encryption state, and we never "go backwards."
-        dbgmsg(handshake, "encrypted handshake failed");
-        if (tr_peerIoReconnect(handshake->io) == 0) {
-            dbgmsg(handshake, "Retrying plaintext TCP handshake...");
-            tr_peerIoSetEncryption(io, PEER_ENCRYPTION_NONE);
-            sendPlainTextHandshake(handshake);
-            return;
-        }
+        resendPlainHandshake = true;
+        dbgmsg(handshake, "Encrypted TCP handshake failed");
     }
-   
-    // All attempts failed, give up on this peer...
-    dbgmsg(handshake, "libevent got an error what==%d, errno=%d (%s)", (int)what, errno, tr_strerror(errno));
-    tr_handshakeDone(handshake, false);
+
+    if (resendPlainHandshake && handshake->encryptionMode != TR_ENCRYPTION_REQUIRED &&
+          tr_peerIoReconnect(handshake->io) == 0) {
+        dbgmsg(handshake, "Retrying with plaintext TCP handshake...");
+        tr_peerIoSetEncryption(io, PEER_ENCRYPTION_NONE);
+        sendPlainTextHandshake(handshake);
+        return;
+    } else {
+        // All attempts failed, give up on this peer...
+        dbgmsg(handshake, "libevent got an error what==%d, errno=%d (%s)", (int)what, errno, tr_strerror(errno));
+        tr_handshakeDone(handshake, false);
+    }
 }
 
 /**
