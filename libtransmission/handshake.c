@@ -562,7 +562,7 @@ static ReadState readCryptoSelect(tr_handshake* handshake, struct evbuffer* inbu
     tr_peerIoReadUint16(handshake->io, inbuf, &pad_d_len);
     dbgmsg(handshake, "pad_d_len is %d", (int)pad_d_len);
 
-    if (pad_d_len > 512)
+    if (pad_d_len > PadD_MAXLEN)
     {
         dbgmsg(handshake, "encryption handshake: pad_d_len is too long");
         return tr_handshakeDone(handshake, false);
@@ -875,7 +875,14 @@ static ReadState readCryptoProvide(tr_handshake* handshake, struct evbuffer* inb
     dbgmsg(handshake, "crypto_provide is %d", (int)crypto_provide);
 
     tr_peerIoReadUint16(handshake->io, inbuf, &padc_len);
-    dbgmsg(handshake, "padc is %d", (int)padc_len);
+    dbgmsg(handshake, "padc len is %d", (int)padc_len);
+
+    if (padc_len > PadC_MAXLEN)
+    {
+        dbgmsg(handshake, "encryption handshake: peer's PadC is too big");
+        return tr_handshakeDone(handshake, false);
+    }
+
     handshake->pad_c_len = padc_len;
     setState(handshake, AWAITING_PAD_C);
     return READ_NOW;
