@@ -1301,6 +1301,9 @@ tr_handshake* tr_handshakeNew(tr_peerIo* io, tr_encryption_mode encryptionMode, 
         // Always begin by sending out an encrypted handshake, even if user chose
         // CLEAR_PREFERRED.
         // We downgrade to a plaintext later if this was unsuccessful.
+        // TODO: Possibly we should determine whether to send out an encrypted handshake
+        // based on whether we are initiating an outgoing connection for leeching or not.
+        // This would reduce overhead when having mostly seeding torrents.
         sendYa(handshake);
     }
 
