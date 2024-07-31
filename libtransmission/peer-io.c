@@ -902,11 +902,6 @@ static void io_dtor(void* vio)
     io_close_socket(io);
     tr_cryptoDestruct(&io->crypto);
 
-    while (io->outbuf_datatypes != NULL)
-    {
-        peer_io_pull_datatype(io);
-    }
-
     memset(io, ~0, sizeof(tr_peerIo));
     tr_free(io);
 }
@@ -1009,6 +1004,9 @@ int tr_peerIoReconnect(tr_peerIo* io)
     event_enable(io, pendingEvents);
     tr_netSetTOS(io->socket.handle.tcp, session->peerSocketTOS, io->addr.type);
     maybeSetCongestionAlgorithm(io->socket.handle.tcp, session->peer_congestion_algorithm);
+
+    tr_cryptoReset(&io->crypto);
+    io->encryption_type = 0;
 
     return 0;
 }
@@ -1139,7 +1137,9 @@ static void addDatatype(tr_peerIo* io, size_t byteCount, bool isPieceData)
 
 static inline void maybeEncryptBuffer(tr_peerIo* io, struct evbuffer* buf, size_t offset, size_t size)
 {
-    if (io->encryption_type == PEER_ENCRYPTION_RC4)
+    CHECK(io->encryption_type > 0);
+    // TODO: Enforce that key is set before encryption is flipped
+    if (io->encryption_type == PEER_ENCRYPTION_RC4 && io->crypto.enc_key != NULL)
     {
         processBuffer(&io->crypto, buf, offset, size, &tr_cryptoEncrypt);
     }
@@ -1160,7 +1160,8 @@ void tr_peerIoWriteBytes(tr_peerIo* io, void const* bytes, size_t byteCount, boo
 
     iovec.iov_len = byteCount;
 
-    if (io->encryption_type == PEER_ENCRYPTION_RC4)
+    CHECK(io->encryption_type > 0);
+    if (io->encryption_type == PEER_ENCRYPTION_RC4 && io->crypto.enc_key != NULL)
     {
         tr_cryptoEncrypt(&io->crypto, iovec.iov_len, bytes, iovec.iov_base);
     }
@@ -1207,7 +1208,8 @@ void evbuffer_add_uint64(struct evbuffer* outbuf, uint64_t addme_hll)
 
 static inline void maybeDecryptBuffer(tr_peerIo* io, struct evbuffer* buf, size_t offset, size_t size)
 {
-    if (io->encryption_type == PEER_ENCRYPTION_RC4)
+    CHECK(io->encryption_type > 0);
+    if (io->encryption_type == PEER_ENCRYPTION_RC4 && io->crypto.dec_key != NULL)
     {
         processBuffer(&io->crypto, buf, offset, size, &tr_cryptoDecrypt);
     }
@@ -1246,11 +1248,12 @@ void tr_peerIoReadBytes(tr_peerIo* io, struct evbuffer* inbuf, void* bytes, size
 
     case PEER_ENCRYPTION_RC4:
         evbuffer_remove(inbuf, bytes, byteCount);
-        tr_cryptoDecrypt(&io->crypto, byteCount, bytes, bytes);
+        if (io->crypto.dec_key != NULL)
+            tr_cryptoDecrypt(&io->crypto, byteCount, bytes, bytes);
         break;
 
     default:
-        TR_ASSERT_MSG(false, "unhandled encryption type %d", (int)io->encryption_type);
+        CHECK_MSG(false, "unhandled encryption type %d", (int)io->encryption_type);
     }
 }
 

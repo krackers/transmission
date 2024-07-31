@@ -60,13 +60,22 @@ void tr_cryptoConstruct(tr_crypto* crypto, uint8_t const* torrentHash, bool isIn
     tr_cryptoSetTorrentHash(crypto, torrentHash);
 }
 
+void tr_cryptoReset(tr_crypto* crypto) {
+    tr_dh_secret_free(crypto->mySecret);
+    crypto->mySecret = NULL;
+    tr_rc4_free(crypto->enc_key);
+    crypto->enc_key = NULL;
+    tr_rc4_free(crypto->dec_key);
+    crypto->dec_key = NULL;
+}
+
 void tr_cryptoDestruct(tr_crypto* crypto)
 {
-    tr_dh_secret_free(crypto->mySecret);
+    tr_cryptoReset(crypto);
     tr_dh_free(crypto->dh);
-    tr_rc4_free(crypto->enc_key);
-    tr_rc4_free(crypto->dec_key);
+    crypto->dh = NULL;
 }
+
 
 /**
 ***
@@ -75,6 +84,8 @@ void tr_cryptoDestruct(tr_crypto* crypto)
 bool tr_cryptoComputeSecret(tr_crypto* crypto, uint8_t const* peerPublicKey)
 {
     ensureKeyExists(crypto);
+    
+    tr_dh_secret_free(crypto->mySecret);
     crypto->mySecret = tr_dh_agree(crypto->dh, peerPublicKey, KEY_LEN);
     return crypto->mySecret != NULL;
 }
@@ -118,17 +129,7 @@ void tr_cryptoDecryptInit(tr_crypto* crypto)
 
 void tr_cryptoDecrypt(tr_crypto* crypto, size_t buf_len, void const* buf_in, void* buf_out)
 {
-    /* FIXME: someone calls this function with uninitialized key */
-    if (crypto->dec_key == NULL)
-    {
-        if (buf_in != buf_out)
-        {
-            memmove(buf_out, buf_in, buf_len);
-        }
-
-        return;
-    }
-
+    CHECK(crypto->dec_key != NULL);
     tr_rc4_process(crypto->dec_key, buf_in, buf_out, buf_len);
 }
 
@@ -143,17 +144,7 @@ void tr_cryptoEncryptInit(tr_crypto* crypto)
 
 void tr_cryptoEncrypt(tr_crypto* crypto, size_t buf_len, void const* buf_in, void* buf_out)
 {
-    /* FIXME: someone calls this function with uninitialized key */
-    if (crypto->enc_key == NULL)
-    {
-        if (buf_in != buf_out)
-        {
-            memmove(buf_out, buf_in, buf_len);
-        }
-
-        return;
-    }
-
+    CHECK(crypto->enc_key != NULL);
     tr_rc4_process(crypto->enc_key, buf_in, buf_out, buf_len);
 }
 
