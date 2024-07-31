@@ -532,8 +532,7 @@ static ReadState readPadD(tr_handshake* handshake, struct evbuffer* inbuf)
 
 static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
 {
-    uint8_t pstrlen;
-    uint8_t pstr[20];
+    uint8_t name[HANDSHAKE_NAME_LEN];
     uint8_t reserved[HANDSHAKE_FLAGS_LEN];
     uint8_t hash[SHA_DIGEST_LENGTH];
 
@@ -546,9 +545,10 @@ static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
 
     handshake->haveReadAnythingFromPeer = true;
 
-    pstrlen = evbuffer_pullup(inbuf, 1)[0]; /* peek, don't read. We may be handing inbuf to AWAITING_YA */
 
-    if (pstrlen == 19) /* unencrypted */
+    /* peek, don't read. We may be handing inbuf to AWAITING_YA */
+    bool isEncrypted = memcmp(evbuffer_pullup(inbuf, HANDSHAKE_NAME_LEN), HANDSHAKE_NAME, HANDSHAKE_NAME_LEN) != 0;
+    if (!isEncrypted)
     {
         if (handshake->encryptionMode == TR_ENCRYPTION_REQUIRED)
         {
@@ -569,36 +569,25 @@ static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
             return READ_NOW;
         }
 
-        if (tr_peerIoIsEncrypted(handshake->io)) {
-            tr_cryptoDecrypt(handshake->crypto, 1, &pstrlen, &pstrlen);
-        }
-        if (pstrlen != 19)
-        {
-            dbgmsg(handshake,
-                "I think peer has sent us a corrupt handshake... (appears encrypted, peer encryption enabled: %d)",
-                tr_peerIoIsEncrypted(handshake->io));
+        if (!tr_peerIoIsEncrypted(handshake->io)) {
+            dbgmsg(handshake, "peer is encrypted, and that does not agree with our handshake");
             return tr_handshakeDone(handshake, false);
         }
     }
 
-    evbuffer_drain(inbuf, 1);
-
-    /* pstr (BitTorrent) */
-    TR_ASSERT(pstrlen == 19);
-    tr_peerIoReadBytes(handshake->io, inbuf, pstr, pstrlen);
-    pstr[pstrlen] = '\0';
-
-    if (strncmp((char const*)pstr, "BitTorrent protocol", 19) != 0)
+    /* confirm the protocol */
+    tr_peerIoReadBytes(handshake->io, inbuf, name, HANDSHAKE_NAME_LEN);
+    if (memcmp(name, HANDSHAKE_NAME, HANDSHAKE_NAME_LEN) != 0)
     {
         dbgmsg(handshake, "handshake prefix not correct");
         return tr_handshakeDone(handshake, false);
     }
 
-    /* reserved bytes */
+    /* read the reserved bytes */
     tr_peerIoReadBytes(handshake->io, inbuf, reserved, sizeof(reserved));
 
     /**
-    *** Extensions
+    *** Set Extensions
     **/
 
     tr_peerIoEnableDHT(handshake->io, HANDSHAKE_HAS_DHT(reserved));
