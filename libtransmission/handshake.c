@@ -1174,9 +1174,11 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
     // clients may have the require-encryption enabled (many users misunderstand what it does, and such
     // users may have checked the box without understanding the details or conseqeuences).
     bool resendPlainHandshake = false;
+    dbgmsg(handshake, "libevent got an error what==%d, errno=%d (%s)", (int)what, errno, tr_strerror(errno));
 
     if (io->socket.type == TR_PEER_SOCKET_TYPE_UTP && !io->isIncoming && 
-        (handshake->state == AWAITING_YB || handshake->state == AWAITING_HANDSHAKE))
+        (handshake->state == AWAITING_YB /* encrypted utp */||
+        (handshake->state == AWAITING_HANDSHAKE && !handshake->haveReadAnythingFromPeer) /*plaintext utp*/))
     {
         /* This peer probably doesn't speak uTP. */
         dbgmsg(handshake, "uTP %s handshake failed", handshake->state == AWAITING_YB ? "encrypted" : "plaintext");
@@ -1215,7 +1217,7 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
             // state. In such case we should retry as plaintext TCP. We might also
             // be in AWAITING_HANDSHAKE if we completed the encrypted uTP handshake but
             // then peer disconnected before sending the initial payload or something. We
-            // can't really distinguish the two, but latter should be rare.
+            // detect this case by looking at whether we ever got any resonse from peer.
             resendPlainHandshake = true;
         }
 
@@ -1238,7 +1240,7 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
         return;
     } else {
         // All attempts failed, give up on this peer...
-        dbgmsg(handshake, "libevent got an error what==%d, errno=%d (%s)", (int)what, errno, tr_strerror(errno));
+        dbgmsg(handshake, "Giving up on peer...");
         tr_handshakeDone(handshake, false);
     }
 }
