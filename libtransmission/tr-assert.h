@@ -16,6 +16,7 @@ bool TR_NORETURN tr_assert_report(char const* file, int line, char const* messag
 
 // Variant that always evalutes predicate & crashes if false, regardless of compilation mode
 #define CHECK(x) ((void)(TR_LIKELY(x) || tr_assert_report(__FILE__, __LINE__, "%s", #x)))
+#define CHECK_MSG(x, ...) ((void)(TR_LIKELY(x) || tr_assert_report(__FILE__, __LINE__, __VA_ARGS__)))
 
 #if !defined(NDEBUG) || defined(TR_FORCE_ASSERTIONS)
 

@@ -48,6 +48,9 @@ void tr_cryptoConstruct(tr_crypto* crypto, uint8_t const* torrentHash, bool isIn
 /** @brief destruct an existing tr_crypto object */
 void tr_cryptoDestruct(tr_crypto* crypto);
 
+/** @brief reset state to allow reconnecting to the peer afresh. */
+void tr_cryptoReset(tr_crypto* crypto);
+
 void tr_cryptoSetTorrentHash(tr_crypto* crypto, uint8_t const* torrentHash);
 
 uint8_t const* tr_cryptoGetTorrentHash(tr_crypto const* crypto);
