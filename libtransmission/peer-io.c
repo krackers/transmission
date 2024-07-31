@@ -1093,7 +1093,12 @@ void tr_peerIoSetEncryption(tr_peerIo* io, tr_encryption_type encryption_type)
 {
     TR_ASSERT(tr_isPeerIo(io));
     TR_ASSERT(encryption_type == PEER_ENCRYPTION_NONE || encryption_type == PEER_ENCRYPTION_RC4);
-
+    // We allow delaying setting the decryption key as an optimization.
+    // Thus (encryption_type != none) => (at least one key set).
+    // Note that it is valid to have encryption type as none with keys being set
+    // which can happen if we want to downgrade our encryption.
+    CHECK(encryption_type == PEER_ENCRYPTION_NONE ||
+          (io->crypto.dec_key != NULL || io->crypto.enc_key != NULL));
     io->encryption_type = encryption_type;
 }
 
@@ -1138,8 +1143,7 @@ static void addDatatype(tr_peerIo* io, size_t byteCount, bool isPieceData)
 static inline void maybeEncryptBuffer(tr_peerIo* io, struct evbuffer* buf, size_t offset, size_t size)
 {
     CHECK(io->encryption_type > 0);
-    // TODO: Enforce that key is set before encryption is flipped
-    if (io->encryption_type == PEER_ENCRYPTION_RC4 && io->crypto.enc_key != NULL)
+    if (io->encryption_type == PEER_ENCRYPTION_RC4)
     {
         processBuffer(&io->crypto, buf, offset, size, &tr_cryptoEncrypt);
     }
@@ -1161,7 +1165,7 @@ void tr_peerIoWriteBytes(tr_peerIo* io, void const* bytes, size_t byteCount, boo
     iovec.iov_len = byteCount;
 
     CHECK(io->encryption_type > 0);
-    if (io->encryption_type == PEER_ENCRYPTION_RC4 && io->crypto.enc_key != NULL)
+    if (io->encryption_type == PEER_ENCRYPTION_RC4)
     {
         tr_cryptoEncrypt(&io->crypto, iovec.iov_len, bytes, iovec.iov_base);
     }
@@ -1209,7 +1213,7 @@ void evbuffer_add_uint64(struct evbuffer* outbuf, uint64_t addme_hll)
 static inline void maybeDecryptBuffer(tr_peerIo* io, struct evbuffer* buf, size_t offset, size_t size)
 {
     CHECK(io->encryption_type > 0);
-    if (io->encryption_type == PEER_ENCRYPTION_RC4 && io->crypto.dec_key != NULL)
+    if (io->encryption_type == PEER_ENCRYPTION_RC4)
     {
         processBuffer(&io->crypto, buf, offset, size, &tr_cryptoDecrypt);
     }
@@ -1248,8 +1252,7 @@ void tr_peerIoReadBytes(tr_peerIo* io, struct evbuffer* inbuf, void* bytes, size
 
     case PEER_ENCRYPTION_RC4:
         evbuffer_remove(inbuf, bytes, byteCount);
-        if (io->crypto.dec_key != NULL)
-            tr_cryptoDecrypt(&io->crypto, byteCount, bytes, bytes);
+        tr_cryptoDecrypt(&io->crypto, byteCount, bytes, bytes);
         break;
 
     default:
