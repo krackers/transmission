@@ -426,8 +426,9 @@ static ReadState readYb(tr_handshake* handshake, struct evbuffer* inbuf)
     return READ_LATER;
 }
 
-// MSE spec: "Since the length of [PadB is] unknown,
+// MSE (Message Stream Encryption) spec: "Since the length of [PadB is] unknown,
 // A will be able to resynchronize on ENCRYPT(VC)"
+// https://archive.ph/POn7v
 static ReadState readVC(tr_handshake* handshake, struct evbuffer* inbuf)
 {
     uint8_t tmp[VC_LENGTH];
@@ -852,14 +853,14 @@ static ReadState readIA(tr_handshake* handshake, struct evbuffer* inbuf)
     outbuf = evbuffer_new();
 
     {
-        /* send VC */
+        /* write VC */
         uint8_t vc[VC_LENGTH];
         memset(vc, 0, VC_LENGTH);
         evbuffer_add(outbuf, vc, VC_LENGTH);
         dbgmsg(handshake, "sending vc");
     }
 
-    /* send crypto_select */
+    /* write crypto_select */
     crypto_select = getCryptoSelect(handshake, handshake->crypto_provide);
 
     if (crypto_select != 0)
@@ -876,7 +877,7 @@ static ReadState readIA(tr_handshake* handshake, struct evbuffer* inbuf)
 
     dbgmsg(handshake, "sending pad d");
 
-    /* ENCRYPT(VC, crypto_provide, len(PadD), PadD
+    /* ENCRYPT(VC, crypto_select, len(PadD), PadD
      * PadD is reserved for future extensions to the handshake...
      * standard practice at this time is for it to be zero-length */
     {
@@ -898,7 +899,10 @@ static ReadState readIA(tr_handshake* handshake, struct evbuffer* inbuf)
 
     dbgmsg(handshake, "sending handshake");
 
-    /* send our handshake */
+    // write our handshake. Per the spec since each step is blocking, the incoming
+    // payload stream might only be sent by our peer after the peer receives our outgoing one?
+    // Also note that we _must_ send out (on the wire) our crypto select/provide message,
+    // before incoming payload is received so we may as well write out handshake info as well.
     {
         uint8_t msg[HANDSHAKE_SIZE];
 
