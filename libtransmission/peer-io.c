@@ -1213,6 +1213,10 @@ static inline void maybeDecryptBuffer(tr_peerIo* io, struct evbuffer* buf, size_
     }
 }
 
+void tr_peerIoDecryptBuf(tr_peerIo* io, struct evbuffer* buf, size_t size) {
+    maybeDecryptBuffer(io, buf, 0, size);
+}
+
 void tr_peerIoReadBytesToBuf(tr_peerIo* io, struct evbuffer* inbuf, struct evbuffer* outbuf, size_t byteCount)
 {
     TR_ASSERT(tr_isPeerIo(io));
