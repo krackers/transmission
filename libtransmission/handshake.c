@@ -100,7 +100,6 @@ typedef enum
     AWAITING_CRYPTO_PROVIDE,
     AWAITING_PAD_C,
     AWAITING_IA,
-    AWAITING_PAYLOAD_STREAM,
     /* outgoing connections (we wait for other party to respond with) */
     AWAITING_YB,
     AWAITING_VC,
@@ -149,7 +148,6 @@ static char const* getStateName(handshake_state_t const state)
         "awaiting crypto_provide", /* AWAITING_CRYPTO_PROVIDE */
         "awaiting pad c", /* AWAITING_PAD_C */
         "awaiting ia", /* AWAITING_IA */
-        "awaiting payload stream", /* AWAITING_PAYLOAD_STREAM */
         "awaiting yb", /* AWAITING_YB */
         "awaiting vc", /* AWAITING_VC */
         "awaiting crypto select", /* AWAITING_CRYPTO_SELECT */
@@ -629,15 +627,15 @@ static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
         {
             dbgmsg(handshake, "peer is unencrypted, and we're disallowing that");
             return tr_handshakeDone(handshake, false);
+        } else if (tr_peerIoIsEncrypted(handshake->io)) {
+            dbgmsg(handshake, "peer is unencrypted, and that does not agree with our handshake");
+            return tr_handshakeDone(handshake, false);
         }
-        // This should normally only ever happen when tr_peerIoIsEncypted is false.
-        // If peers sent a plain-text handshake when we negotiated for an encrypted one
-        // the peer (or our state tracking) is buggy. But we'll just accept it...
-        tr_peerIoSetEncryption(handshake->io, PEER_ENCRYPTION_NONE);
     }
     else /* encrypted or corrupt */
     {
-        if (tr_peerIoIsIncoming(handshake->io))
+        // If we haven't yet completed an encrypted handshake.
+        if (tr_peerIoIsIncoming(handshake->io) && !tr_peerIoHasTorrentHash(handshake->io))
         {
             dbgmsg(handshake, "I think peer is sending us an encrypted handshake...");
             setState(handshake, AWAITING_YA);
@@ -649,7 +647,9 @@ static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
         }
         if (pstrlen != 19)
         {
-            dbgmsg(handshake, "I think peer has sent us a corrupt handshake...");
+            dbgmsg(handshake,
+                "I think peer has sent us a corrupt handshake... (appears encrypted, peer encryption enabled: %d)",
+                tr_peerIoIsEncrypted(handshake->io));
             return tr_handshakeDone(handshake, false);
         }
     }
@@ -663,6 +663,7 @@ static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
 
     if (strncmp((char const*)pstr, "BitTorrent protocol", 19) != 0)
     {
+        dbgmsg(handshake, "handshake prefix not correct");
         return tr_handshakeDone(handshake, false);
     }
 
@@ -680,20 +681,16 @@ static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
     /* torrent hash */
     tr_peerIoReadBytes(handshake->io, inbuf, hash, sizeof(hash));
 
-    if (tr_peerIoIsIncoming(handshake->io))
+    if (tr_peerIoIsIncoming(handshake->io) && !tr_peerIoHasTorrentHash(handshake->io)) /*incoming plain handshake*/
     {
         if (!tr_torrentExists(handshake->session, hash))
         {
             dbgmsg(handshake, "peer is trying to connect to us for a torrent we don't have.");
             return tr_handshakeDone(handshake, false);
         }
-        else
-        {
-            TR_ASSERT(!tr_peerIoHasTorrentHash(handshake->io));
-            tr_peerIoSetTorrentHash(handshake->io, hash);
-        }
+        tr_peerIoSetTorrentHash(handshake->io, hash);
     }
-    else /* outgoing */
+    else /* outgoing, or incoming MSE handshake */
     {
         TR_ASSERT(tr_peerIoHasTorrentHash(handshake->io));
 
@@ -1002,35 +999,9 @@ static ReadState readIA(tr_handshake* handshake, struct evbuffer* inbuf)
     tr_peerIoWriteBuf(handshake->io, outbuf, false);
     evbuffer_free(outbuf);
 
-    /* now await the handshake */
-    setState(handshake, AWAITING_PAYLOAD_STREAM);
+    /* now await the handshake. It consists of both IA and the payload stream.  */
+    setState(handshake, AWAITING_HANDSHAKE);
     return READ_NOW;
-}
-
-// The handshake data consists of both IA and the payload stream info.
-static ReadState readPayloadStream(tr_handshake* handshake, struct evbuffer* inbuf)
-{
-    handshake_parse_err_t i;
-    size_t const needlen = HANDSHAKE_SIZE;
-
-    dbgmsg(handshake, "reading payload stream... have %zu, need %zu", evbuffer_get_length(inbuf), needlen);
-
-    if (evbuffer_get_length(inbuf) < needlen)
-    {
-        return READ_LATER;
-    }
-
-    /* parse the handshake ... */
-    i = parseHandshake(handshake, inbuf);
-    dbgmsg(handshake, "parseHandshake returned %d", i);
-
-    if (i != HANDSHAKE_OK)
-    {
-        return tr_handshakeDone(handshake, false);
-    }
-
-    /* we've completed the BT handshake... pass the work on to peer-msgs */
-    return tr_handshakeDone(handshake, true);
 }
 
 /***
@@ -1086,11 +1057,6 @@ static ReadState canRead(struct tr_peerIo* io, void* arg, size_t* piece)
         case AWAITING_IA:
             ret = readIA(handshake, inbuf);
             break;
-
-        case AWAITING_PAYLOAD_STREAM:
-            // This is the terminal state for incoming handshake.
-            ret = readPayloadStream(handshake, inbuf);
-            return ret;
 
         case AWAITING_YB:
             ret = readYb(handshake, inbuf);
