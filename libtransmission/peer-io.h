@@ -287,6 +287,8 @@ void tr_peerIoReadUint32(tr_peerIo* io, struct evbuffer* inbuf, uint32_t* setme)
 
 void tr_peerIoDrain(tr_peerIo* io, struct evbuffer* inbuf, size_t byteCount);
 
+void tr_peerIoDecryptBuf(tr_peerIo* io, struct evbuffer* buf, size_t size);
+
 /**
 ***
 **/

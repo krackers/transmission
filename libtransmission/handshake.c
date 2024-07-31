@@ -967,6 +967,11 @@ static ReadState readIA(tr_handshake* handshake, struct evbuffer* inbuf)
     if (crypto_select == CRYPTO_PROVIDE_PLAINTEXT)
     {
         tr_peerIoWriteBuf(handshake->io, outbuf, false);
+        // While new content is not encrypted, previous IA content
+        // would still be present. Switching the mode here would give
+        // erroneous results. To make this seamless we transparently decrypt
+        // any existing IA content.
+        tr_peerIoDecryptBuf(handshake->io, inbuf, handshake->ia_len);
         tr_peerIoSetEncryption(handshake->io, PEER_ENCRYPTION_NONE);
     }
 
@@ -994,6 +999,7 @@ static ReadState readIA(tr_handshake* handshake, struct evbuffer* inbuf)
     return READ_NOW;
 }
 
+// The handshake data consists of both IA and the payload stream info.
 static ReadState readPayloadStream(tr_handshake* handshake, struct evbuffer* inbuf)
 {
     handshake_parse_err_t i;
