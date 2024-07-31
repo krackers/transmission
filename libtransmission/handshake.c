@@ -414,8 +414,6 @@ static ReadState readYb(tr_handshake* handshake, struct evbuffer* inbuf)
 
     dbgmsg(handshake, "got an %s handshake", (isEncrypted ? "encrypted" : "plain"));
 
-    tr_peerIoSetEncryption(handshake->io, isEncrypted ? PEER_ENCRYPTION_RC4 : PEER_ENCRYPTION_NONE);
-
     if (!isEncrypted)
     {
         setState(handshake, AWAITING_HANDSHAKE);
@@ -460,15 +458,19 @@ static ReadState readYb(tr_handshake* handshake, struct evbuffer* inbuf)
         evbuffer_add(outbuf, buf, SHA_DIGEST_LENGTH);
     }
 
+    // Send out the two unencrypted pieces.
+    tr_peerIoWriteBuf(handshake->io, outbuf, false);
+
+    // Remaining pieces are encrypted. Decryption will be initialized
+    // in readVc
+    tr_cryptoEncryptInit(handshake->crypto);
+    tr_peerIoSetEncryption(handshake->io, PEER_ENCRYPTION_RC4);
+
     /* ENCRYPT(VC, crypto_provide, len(PadC), PadC
      * PadC is reserved for future extensions to the handshake...
      * standard practice at this time is for it to be zero-length */
     {
         uint8_t vc[VC_LENGTH] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-        tr_peerIoWriteBuf(handshake->io, outbuf, false);
-        tr_cryptoEncryptInit(handshake->crypto);
-        tr_peerIoSetEncryption(handshake->io, PEER_ENCRYPTION_RC4);
 
         evbuffer_add(outbuf, vc, VC_LENGTH);
         evbuffer_add_uint32(outbuf, getCryptoProvide(handshake));
@@ -491,7 +493,6 @@ static ReadState readYb(tr_handshake* handshake, struct evbuffer* inbuf)
     }
 
     /* send it */
-    tr_cryptoDecryptInit(handshake->crypto);
     setReadState(handshake, AWAITING_VC);
     tr_peerIoWriteBuf(handshake->io, outbuf, false);
 
@@ -500,6 +501,8 @@ static ReadState readYb(tr_handshake* handshake, struct evbuffer* inbuf)
     return READ_LATER;
 }
 
+// MSE spec: "Since the length of [PadB is] unknown,
+// A will be able to resynchronize on ENCRYPT(VC)"
 static ReadState readVC(tr_handshake* handshake, struct evbuffer* inbuf)
 {
     uint8_t tmp[VC_LENGTH];
@@ -521,6 +524,8 @@ static ReadState readVC(tr_handshake* handshake, struct evbuffer* inbuf)
         }
 
         memcpy(tmp, evbuffer_pullup(inbuf, key_len), key_len);
+        // Initialize decryption state. Note that we must re-initialize
+        // each loop since we always want to parse with a fresh crypto state.
         tr_cryptoDecryptInit(handshake->crypto);
         tr_cryptoDecrypt(handshake->crypto, key_len, tmp, tmp);
 
@@ -587,6 +592,7 @@ static ReadState readPadD(tr_handshake* handshake, struct evbuffer* inbuf)
 
     tr_peerIoDrain(handshake->io, inbuf, needlen);
 
+    // Possibly downgrade encryption mode if peer selected plaintext
     tr_peerIoSetEncryption(handshake->io, handshake->crypto_select);
 
     setState(handshake, AWAITING_HANDSHAKE);
@@ -619,18 +625,18 @@ static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
 
     if (pstrlen == 19) /* unencrypted */
     {
-        tr_peerIoSetEncryption(handshake->io, PEER_ENCRYPTION_NONE);
-
         if (handshake->encryptionMode == TR_ENCRYPTION_REQUIRED)
         {
             dbgmsg(handshake, "peer is unencrypted, and we're disallowing that");
             return tr_handshakeDone(handshake, false);
         }
+        // This should normally only ever happen when tr_peerIoIsEncypted is false.
+        // If peers sent a plain-text handshake when we negotiated for an encrypted one
+        // the peer (or our state tracking) is buggy. But we'll just accept it...
+        tr_peerIoSetEncryption(handshake->io, PEER_ENCRYPTION_NONE);
     }
     else /* encrypted or corrupt */
     {
-        tr_peerIoSetEncryption(handshake->io, PEER_ENCRYPTION_RC4);
-
         if (tr_peerIoIsIncoming(handshake->io))
         {
             dbgmsg(handshake, "I think peer is sending us an encrypted handshake...");
@@ -638,8 +644,9 @@ static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
             return READ_NOW;
         }
 
-        tr_cryptoDecrypt(handshake->crypto, 1, &pstrlen, &pstrlen);
-
+        if (tr_peerIoIsEncrypted(handshake->io)) {
+            tr_cryptoDecrypt(handshake->crypto, 1, &pstrlen, &pstrlen);
+        }
         if (pstrlen != 19)
         {
             dbgmsg(handshake, "I think peer has sent us a corrupt handshake...");
@@ -866,6 +873,8 @@ static ReadState readCryptoProvide(tr_handshake* handshake, struct evbuffer* inb
     /* next part: ENCRYPT(VC, crypto_provide, len(PadC), */
 
     tr_cryptoDecryptInit(handshake->crypto);
+    tr_cryptoEncryptInit(handshake->crypto);
+    tr_peerIoSetEncryption(handshake->io, PEER_ENCRYPTION_RC4);
 
     tr_peerIoReadBytes(handshake->io, inbuf, vc_in, VC_LENGTH);
     // TODO: Verify VC_IN is all zero?
@@ -927,7 +936,6 @@ static ReadState readIA(tr_handshake* handshake, struct evbuffer* inbuf)
     ***  B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
     **/
 
-    tr_cryptoEncryptInit(handshake->crypto);
     outbuf = evbuffer_new();
 
     {
