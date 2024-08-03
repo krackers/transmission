@@ -383,10 +383,10 @@ static ReadState readYb(tr_handshake* handshake, struct evbuffer* inbuf)
         evbuffer_add(outbuf, buf, SHA_DIGEST_LENGTH);
     }
 
-    // Send out the two unencrypted pieces.
+    // Send out the two unencrypted messages.
     tr_peerIoWriteBuf(handshake->io, outbuf, false);
 
-    // Remaining pieces are encrypted. Decryption will be initialized
+    // Remaining messages are encrypted. Decryption will be initialized
     // in readVc
     tr_cryptoEncryptInit(handshake->crypto);
     tr_peerIoSetEncryption(handshake->io, PEER_ENCRYPTION_RC4);
@@ -527,7 +527,7 @@ static ReadState readPadD(tr_handshake* handshake, struct evbuffer* inbuf)
 
 /***
 ****
-****  INCOMING CONNECTIONS
+****  INCOMING/OUTGOING CONNECTIONS
 ****
 ***/
 
@@ -537,6 +537,8 @@ static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
     uint8_t reserved[HANDSHAKE_FLAGS_LEN];
     uint8_t hash[SHA_DIGEST_LENGTH];
 
+    // Note that because RC4 is a stream cipher, ciphertext length is same as plaintext length.
+    // This is why we can compare lengths in this fashion.
     dbgmsg(handshake, "payload: need %d, got %zu", INCOMING_HANDSHAKE_LEN, evbuffer_get_length(inbuf));
 
     if (evbuffer_get_length(inbuf) < INCOMING_HANDSHAKE_LEN)
@@ -665,6 +667,11 @@ static ReadState readPeerId(tr_handshake* handshake, struct evbuffer* inbuf)
     return tr_handshakeDone(handshake, !connected_to_self);
 }
 
+/***
+****
+****  INCOMING CONNECTIONS
+****
+***/
 static ReadState readYa(tr_handshake* handshake, struct evbuffer* inbuf)
 {
     uint8_t ya[KEY_LEN];
