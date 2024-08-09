@@ -150,15 +150,31 @@
     }
 #endif
 
+#define TR_CONCAT_(a, b) a ## b
+#define TR_CONCAT(a, b) TR_CONCAT_(a, b)
+#define TR_UNIQUE(prefix) TR_CONCAT(TR_CONCAT(_unq_, prefix), __COUNTER__)
+
 /* Sometimes the system defines MAX/MIN, sometimes not.
    In the latter case, define those here since we will use them */
 
 #ifndef MAX
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define _MAX(a, b, aa, bb) \
+    ({ __typeof__(a) aa = (a); \
+       __typeof__(b) bb = (b); \
+       aa > bb ? aa : bb; })
+
+#define MAX(a, b) \
+        _MAX(a, b, TR_UNIQUE(tmpa), TR_UNIQUE(tmpb))
 #endif
 
 #ifndef MIN
-#define MIN(a, b) ((a) > (b) ? (b) : (a))
+#define _MIN(a, b, aa, bb) \
+    ({ __typeof__(a) aa = (a); \
+       __typeof__(b) bb = (b); \
+       aa > bb ? bb : aa; })
+
+#define MIN(a, b) \
+        _MIN(a, b, TR_UNIQUE(tmpa), TR_UNIQUE(tmpb))
 #endif
 
 /***
