@@ -2034,91 +2034,91 @@ static bool myHandshakeDoneCB(tr_handshake* handshake, tr_peerIo* io, bool readA
         swarmLock(s);
     }
 
+    // If swarm isn't even running, just exit
+    if (s == NULL || !s->isRunning) {
+        goto done;
+    }
+
     addr = tr_peerIoGetAddress(io, &port);
-
-    if (!ok || s == NULL || !s->isRunning)
+    // If connection failed, penalize peer and return.
+    // Note this is done only when it's not "our fault" (i.e. not due to paused torrent).
+    if (!ok)
     {
-        if (s != NULL)
+        struct peer_atom* atom = getExistingAtom(s, addr);
+        if (atom != NULL)
         {
-            struct peer_atom* atom = getExistingAtom(s, addr);
-
-            if (atom != NULL)
+            ++atom->numFails;
+            if (!readAnythingFromPeer)
             {
-                ++atom->numFails;
-
-                if (!readAnythingFromPeer)
-                {
-                    tordbg(s, "marking peer %s as unreachable... numFails is %d", tr_atomAddrStr(atom), (int)atom->numFails);
-                    atom->flags2 |= MYFLAG_UNREACHABLE;
-                }
+                tordbg(s, "marking peer %s as unreachable... numFails is %d", tr_atomAddrStr(atom), (int)atom->numFails);
+                atom->flags2 |= MYFLAG_UNREACHABLE;
             }
         }
+        goto done;
     }
-    else /* looking good */
+   
+    /* We have a valid connection and a running swarm */
+    struct peer_atom* atom;
+
+    ensureAtomExists(s, addr, port, 0, -1, TR_PEER_FROM_INCOMING);
+    atom = getExistingAtom(s, addr);
+
+    TR_ASSERT(atom != NULL);
+
+    atom->time = tr_time();
+    atom->piece_data_time = 0;
+    atom->lastConnectionAt = tr_time();
+
+    if (!tr_peerIoIsIncoming(io))
     {
-        struct peer_atom* atom;
-
-        ensureAtomExists(s, addr, port, 0, -1, TR_PEER_FROM_INCOMING);
-        atom = getExistingAtom(s, addr);
-
-        TR_ASSERT(atom != NULL);
-
-        atom->time = tr_time();
-        atom->piece_data_time = 0;
-        atom->lastConnectionAt = tr_time();
-
-        if (!tr_peerIoIsIncoming(io))
-        {
-            atom->flags |= ADDED_F_CONNECTABLE;
-            atom->flags2 &= ~MYFLAG_UNREACHABLE;
-        }
-
-        /* In principle, this flag specifies whether the peer groks uTP,
-           not whether it's currently connected over uTP. */
-        if (io->socket.type == TR_PEER_SOCKET_TYPE_UTP)
-        {
-            atom->flags |= ADDED_F_UTP_FLAGS;
-        }
-
-        if ((atom->flags2 & MYFLAG_BANNED) != 0)
-        {
-            tordbg(s, "banned peer %s tried to reconnect", tr_atomAddrStr(atom));
-        }
-        else if (tr_peerIoIsIncoming(io) && getPeerCount(s) >= getMaxPeerCount(s->tor))
-        {
-        }
-        else
-        {
-            tr_peer* peer = atom->peer;
-
-            if (peer != NULL)
-            {
-                /* we already have this peer */
-            }
-            else
-            {
-                tr_quark client;
-                tr_peerIo* io;
-                char buf[128];
-
-                if (peer_id != NULL)
-                {
-                    client = tr_quark_new(tr_clientForId(buf, sizeof(buf), peer_id), TR_BAD_SIZE);
-                }
-                else
-                {
-                    client = TR_KEY_NONE;
-                }
-
-                io = tr_handshakeStealIO(handshake); /* this steals its refcount too, which is balanced by our unref in peerDelete() */
-                tr_peerIoSetParent(io, &s->tor->bandwidth);
-                createBitTorrentPeer(s->tor, io, atom, client);
-
-                success = true;
-            }
-        }
+        atom->flags |= ADDED_F_CONNECTABLE;
+        atom->flags2 &= ~MYFLAG_UNREACHABLE;
     }
 
+    /* In principle, this flag specifies whether the peer groks uTP,
+        not whether it's currently connected over uTP. */
+    if (io->socket.type == TR_PEER_SOCKET_TYPE_UTP)
+    {
+        atom->flags |= ADDED_F_UTP_FLAGS;
+    }
+
+    if ((atom->flags2 & MYFLAG_BANNED) != 0)
+    {
+        tordbg(s, "banned peer %s tried to reconnect", tr_atomAddrStr(atom));
+        goto done;
+    }
+    
+    if (tr_peerIoIsIncoming(io) && getPeerCount(s) >= getMaxPeerCount(s->tor))
+    {
+        // too many peers already
+        goto done;
+    }
+    
+    tr_peer* peer = atom->peer;
+    if (peer != NULL)
+    {
+        /* we already have this peer */
+        goto done;
+    }
+
+    tr_quark client;
+    char buf[128];
+
+    if (peer_id != NULL)
+    {
+        client = tr_quark_new(tr_clientForId(buf, sizeof(buf), peer_id), TR_BAD_SIZE);
+    }
+    else
+    {
+        client = TR_KEY_NONE;
+    }
+
+    io = tr_handshakeStealIO(handshake); /* this steals its refcount too, which is balanced by our unref in peerDelete() */
+    tr_peerIoSetParent(io, &s->tor->bandwidth);
+    createBitTorrentPeer(s->tor, io, atom, client);
+
+    success = true;
+done:
     if (s != NULL)
     {
         swarmUnlock(s);

@@ -173,11 +173,10 @@ static bool buildHandshakeMessage(tr_handshake* handshake, uint8_t* buf)
     unsigned char const* peer_id = NULL;
     uint8_t const* torrentHash;
     tr_torrent* tor;
-    bool success;
 
     if ((torrentHash = tr_cryptoGetTorrentHash(handshake->crypto)) != NULL)
     {
-        if ((tor = tr_torrentFindFromHash(handshake->session, torrentHash)) != NULL)
+        if (((tor = tr_torrentFindFromHash(handshake->session, torrentHash)) != NULL) && tor->isRunning)
         {
             peer_id = tr_torrentGetPeerId(tor);
         }
@@ -185,37 +184,34 @@ static bool buildHandshakeMessage(tr_handshake* handshake, uint8_t* buf)
 
     if (peer_id == NULL)
     {
-        success = false;
+        return false;
     }
-    else
+
+    uint8_t* walk = buf;
+
+    memcpy(walk, HANDSHAKE_NAME, HANDSHAKE_NAME_LEN);
+    walk += HANDSHAKE_NAME_LEN;
+    memset(walk, 0, HANDSHAKE_FLAGS_LEN);
+    HANDSHAKE_SET_LTEP(walk);
+    HANDSHAKE_SET_FASTEXT(walk);
+
+    /* Note that this doesn't depend on whether the torrent is private.
+     * We don't accept DHT peers for a private torrent,
+     * but we participate in the DHT regardless. */
+    if (tr_dhtEnabled(handshake->session))
     {
-        uint8_t* walk = buf;
-
-        memcpy(walk, HANDSHAKE_NAME, HANDSHAKE_NAME_LEN);
-        walk += HANDSHAKE_NAME_LEN;
-        memset(walk, 0, HANDSHAKE_FLAGS_LEN);
-        HANDSHAKE_SET_LTEP(walk);
-        HANDSHAKE_SET_FASTEXT(walk);
-
-        /* Note that this doesn't depend on whether the torrent is private.
-         * We don't accept DHT peers for a private torrent,
-         * but we participate in the DHT regardless. */
-        if (tr_dhtEnabled(handshake->session))
-        {
-            HANDSHAKE_SET_DHT(walk);
-        }
-
-        walk += HANDSHAKE_FLAGS_LEN;
-        memcpy(walk, torrentHash, SHA_DIGEST_LENGTH);
-        walk += SHA_DIGEST_LENGTH;
-        memcpy(walk, peer_id, PEER_ID_LEN);
-        walk += PEER_ID_LEN;
-
-        TR_ASSERT(walk - buf == HANDSHAKE_SIZE);
-        success = true;
+        HANDSHAKE_SET_DHT(walk);
     }
 
-    return success;
+    walk += HANDSHAKE_FLAGS_LEN;
+    memcpy(walk, torrentHash, SHA_DIGEST_LENGTH);
+    walk += SHA_DIGEST_LENGTH;
+    memcpy(walk, peer_id, PEER_ID_LEN);
+    walk += PEER_ID_LEN;
+
+    TR_ASSERT(walk - buf == HANDSHAKE_SIZE);
+
+    return true;
 }
 
 static ReadState tr_handshakeDone(tr_handshake* handshake, bool isConnected);
@@ -604,9 +600,13 @@ static ReadState readHandshake(tr_handshake* handshake, struct evbuffer* inbuf)
 
     if (tr_peerIoIsIncoming(handshake->io) && !tr_peerIoHasTorrentHash(handshake->io)) /*incoming plain handshake*/
     {
-        if (!tr_torrentExists(handshake->session, hash))
+        tr_torrent *tor = tr_torrentFindFromHash(handshake->session, hash);
+        if (tor == NULL)
         {
             dbgmsg(handshake, "peer is trying to connect to us for a torrent we don't have.");
+            return tr_handshakeDone(handshake, false);
+        } else if (!tor->isRunning) {
+            dbgmsg(handshake, "peer is trying to connect to us for a torrent not running.");
             return tr_handshakeDone(handshake, false);
         }
         tr_peerIoSetTorrentHash(handshake->io, hash);
@@ -780,7 +780,10 @@ static ReadState readCryptoProvide(tr_handshake* handshake, struct evbuffer* inb
         bool const peerIsSeed = tr_peerMgrPeerIsSeed(tor, tr_peerIoGetAddress(handshake->io, NULL));
         dbgmsg(handshake, "got INCOMING connection's encrypted handshake for torrent [%s]", tr_torrentName(tor));
         tr_peerIoSetTorrentHash(handshake->io, tor->info.hash);
-
+        if (!tor->isRunning) {
+            dbgmsg(handshake, "we are not running that torrent...");
+            return tr_handshakeDone(handshake, false);
+        }
         if (clientIsSeed && peerIsSeed)
         {
             dbgmsg(handshake, "another seed tried to reconnect to us!");
@@ -1078,7 +1081,11 @@ void tr_handshakeAbort(tr_handshake* handshake)
 
 static void sendPlainTextHandshake(tr_handshake* handshake) {
     uint8_t msg[HANDSHAKE_SIZE];
-    buildHandshakeMessage(handshake, msg);
+    if (!buildHandshakeMessage(handshake, msg))
+    {
+        tr_handshakeDone(handshake, false);
+        return;
+    }
     handshake->haveSentBitTorrentHandshake = true;
     setReadState(handshake, AWAITING_HANDSHAKE);
     tr_peerIoWriteBytes(handshake->io, msg, sizeof(msg), false);
