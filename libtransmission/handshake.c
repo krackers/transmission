@@ -258,19 +258,21 @@ static uint32_t getCryptoProvide(tr_handshake const* handshake)
     switch (handshake->encryptionMode)
     {
     case TR_ENCRYPTION_REQUIRED:
+    case TR_ENCRYPTION_PREFERRED:
         provide |= CRYPTO_PROVIDE_CRYPTO;
         break;
-    // For outgoing connections, the other party chooses
-    // the crypto method. So if we want to ensure compatibility
-    // we must provide option for both (there's no way for you
-    // to indicate priority).
-    case TR_ENCRYPTION_PREFERRED:
+
+    // For clear preferred mode, we always make an outgoing plaintext handshake
+    // instead. While we could do an MSE handshake and offer plaintext encryption,
+    // older versions of Transmission don't properly support downgrading crypto.
     case TR_CLEAR_PREFERRED:
-        provide |= CRYPTO_PROVIDE_CRYPTO | CRYPTO_PROVIDE_PLAINTEXT;
+        CHECK(false && "Clear preferred should not be calling into getCryptoProvide.");
         break;
     default:
-        CHECK(false);
+        CHECK(false && "Unexpected encryption mode in getCryptoProvide.");
+        break;
     }
+
 
     return provide;
 }
@@ -902,6 +904,22 @@ static ReadState readIA(tr_handshake* handshake, struct evbuffer* inbuf)
         // any existing IA content.
         tr_peerIoDecryptBuf(handshake->io, inbuf, handshake->ia_len);
         tr_peerIoSetEncryption(handshake->io, PEER_ENCRYPTION_NONE);
+
+        /*
+         Versions of Transmission older than 4-ish have a bug where they do not properly de-encrypt.
+         That is, say client A talks to a Tr3 client B.
+         A sends a crypto-provide with plaintext option in readYb, and the Tr3 client B
+         (in clear-preferred mode) ends up selecting a plaintext option here in readIa.
+
+         B ends up sending the rest of the info (along with the handshake). So from A's
+         perspective the handshake will finish successfully. However when B subsequently
+         goes to parse the handshake, it won't like the encrypted contents and so will abort.
+         This unfortunately means A won't even bother retrying (since the handshake
+         was successful from its perspective, instead it's like the peer suddenly dropped offline.)
+
+         Mainline Tr3 -> Tr3 actually won't exhibit this particular issue though because
+         Tr3 never makes an outgoing MSE handshake that offers plaintext.
+        */
     }
 
     dbgmsg(handshake, "sending handshake");
@@ -1205,15 +1223,11 @@ tr_handshake* tr_handshakeNew(tr_peerIo* io, tr_encryption_mode encryptionMode, 
     {
         setReadState(handshake, AWAITING_HANDSHAKE);
     }
-    else
+    else if (encryptionMode != TR_CLEAR_PREFERRED)
     {
-        // Always begin by sending out an encrypted handshake, even if user chose
-        // CLEAR_PREFERRED.
-        // We downgrade to a plaintext later if this was unsuccessful.
-        // TODO: Possibly we should determine whether to send out an encrypted handshake
-        // based on whether we are initiating an outgoing connection for leeching or not.
-        // This would reduce overhead when having mostly seeding torrents.
         sendYa(handshake);
+    } else {
+        sendPlainTextHandshake(handshake);
     }
 
     return handshake;
