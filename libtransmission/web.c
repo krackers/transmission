@@ -109,6 +109,20 @@ static size_t writeFunc(void* ptr, size_t size, size_t nmemb, void* vtask)
     size_t const byteCount = size * nmemb;
     struct tr_web_task* task = vtask;
 
+    // don't webseed from servers that do not serve partial content
+    // See https://github.com/transmission/transmission/issues/4595
+    if (task->range != NULL) {
+        long response_code;
+        tr_webGetTaskInfo(task, TR_WEB_GET_CODE, &response_code);
+        if (response_code != 0 && response_code != 206) {
+            tr_logAddNamedInfo("web", "Requested partial range but server does not support range response.");
+            // Tell curl to error out. Returning anything that's not
+            // `bytes_used` signals an error and causes the transfer
+            // to be aborted w/CURLE_WRITE_ERROR.
+            return byteCount + 1;
+        }
+    }
+
     /* webseed downloads should be speed limited */
     if (task->torrentId != -1)
     {
