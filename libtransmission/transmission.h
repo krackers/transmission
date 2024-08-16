@@ -71,16 +71,14 @@ typedef enum
     //   * Accept both encrypted and unencrypted handshakes
     //   * Prefer header-only encryption over full-message encryption
     // Outgoing:
-    //   * Use encrypted handshake
-    //   * Offer both handshake-only and full-message encryptoin
-    //   * Fallback to plaintext handshake if peer does not support encryption.
+    //   * Use plaintext handshake
     TR_CLEAR_PREFERRED,
     // Incoming:
     //   * Accept both encrypted and unencrypted handshakes
     //   * Prefer full-message encryption over header-only
     // Outgoing:
     //   * Use encrypted handshake
-    //   * Offer both handshake-only and full-message encryptoin
+    //   * Offer only full-message encryption
     //   * Fallback to plaintext handshake if peer does not support encryption.
     TR_ENCRYPTION_PREFERRED,
     // Require both incoming/outgoing to be full-message encryption. No plaintext fallback.
