@@ -507,6 +507,7 @@ static void tau_tracker_on_dns(int errcode, struct evutil_addrinfo* addr, void* 
     struct tau_tracker* tracker = vtracker;
 
     tracker->dns_request = NULL;
+    tracker->addr_expiration_time = tr_time() + 60 * 60; /* one hour */
 
     if (errcode != 0)
     {
@@ -519,7 +520,6 @@ static void tau_tracker_on_dns(int errcode, struct evutil_addrinfo* addr, void* 
     {
         dbgmsg(tracker->key, "DNS lookup succeeded");
         tracker->addr = addr;
-        tracker->addr_expiration_time = tr_time() + 60 * 60; /* one hour */
         tau_tracker_upkeep(tracker);
     }
 }
@@ -686,10 +686,17 @@ static void tau_tracker_upkeep_ex(struct tau_tracker* tracker, bool timeout_reqs
         dbgmsg(tracker->host, "Expiring old DNS result");
         evutil_freeaddrinfo(tracker->addr);
         tracker->addr = NULL;
+        tracker->addr_expiration_time = 0;
     }
 
     /* are there any requests pending? */
     if (tau_tracker_is_idle(tracker))
+    {
+        return;
+    }
+
+    /* if DNS lookup *recently* failed for this host, do nothing */
+    if (tracker->addr == NULL && now < tracker->addr_expiration_time)
     {
         return;
     }
