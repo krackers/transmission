@@ -627,6 +627,8 @@ static void on_tracker_connection_response(struct tau_tracker* tracker, tau_acti
 static void tau_tracker_timeout_reqs(struct tau_tracker* tracker)
 {
     tr_ptrArray* reqs;
+    // Always use the more accurate version instead of tr_time since
+    // our timeout is measured against wallclock time.
     time_t const now = time(NULL);
     bool const cancel_all = tracker->close_at != 0 && (tracker->close_at <= now);
 
@@ -680,13 +682,10 @@ static void tau_tracker_upkeep_ex(struct tau_tracker* tracker, bool timeout_reqs
     time_t const now = tr_time();
     bool const closing = tracker->close_at != 0;
 
-    /* if the address info is too old, expire it */
-    if (tracker->addr != NULL && (closing || tracker->addr_expiration_time <= now))
-    {
-        dbgmsg(tracker->host, "Expiring old DNS result");
+    // If shutting down always free any address info.
+    if (closing && tracker->addr != NULL) {
         evutil_freeaddrinfo(tracker->addr);
         tracker->addr = NULL;
-        tracker->addr_expiration_time = 0;
     }
 
     /* are there any requests pending? */
@@ -695,15 +694,15 @@ static void tau_tracker_upkeep_ex(struct tau_tracker* tracker, bool timeout_reqs
         return;
     }
 
-    /* if DNS lookup *recently* failed for this host, do nothing */
-    if (tracker->addr == NULL && now < tracker->addr_expiration_time)
+    /* update the addr if our lookup is past its shelf date */
+    if (!closing && tracker->dns_request == NULL && tracker->addr_expiration_time <= now)
     {
-        return;
-    }
+        if (tracker->addr != NULL) {
+            dbgmsg(tracker->host, "Expiring old DNS result");
+            evutil_freeaddrinfo(tracker->addr);
+            tracker->addr = NULL;
+        }
 
-    /* if we don't have an address yet, try & get one now. */
-    if (!closing && tracker->addr == NULL && tracker->dns_request == NULL)
-    {
         struct evutil_addrinfo hints;
         memset(&hints, 0, sizeof(hints));
         hints.ai_family = AF_UNSPEC;
