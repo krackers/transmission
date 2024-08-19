@@ -37,7 +37,7 @@
 
 - (void) setupInfo;
 
-- (void) setWebSeedTableHidden: (BOOL) hide animate: (BOOL) animate;
+- (void) setWebSeedTableHidden: (BOOL) hide;
 - (NSArray *) peerSortDescriptors;
 
 @end
@@ -63,6 +63,7 @@
         viewRect.size.height = height;
         [[self view] setFrame: viewRect];
     }
+    
 
     //set table header text
     [[[fPeerTable tableColumnWithIdentifier: @"IP"] headerCell] setStringValue: NSLocalizedString(@"IP Address",
@@ -95,14 +96,8 @@
     //prepare for animating peer table and web seed table
     fViewTopMargin = fWebSeedTableTopConstraint.constant;
 
-    CABasicAnimation * webSeedTableAnimation = [CABasicAnimation animation];
-    [webSeedTableAnimation setTimingFunction: [CAMediaTimingFunction functionWithName: kCAMediaTimingFunctionLinear]];
-    [webSeedTableAnimation setDuration: 0.125];
-    [webSeedTableAnimation setDelegate: self];
-    [webSeedTableAnimation setValue: WEB_SEED_ANIMATION_ID forKey: ANIMATION_ID_KEY];
-    [fWebSeedTableTopConstraint setAnimations: @{ @"constant": webSeedTableAnimation }];
 
-    [self setWebSeedTableHidden: YES animate: NO];
+    [self setWebSeedTableHidden: YES];
 }
 
 
@@ -436,22 +431,6 @@
     return nil;
 }
 
-- (void) animationDidStart: (CAAnimation *) animation
-{
-    if (![[animation valueForKey: ANIMATION_ID_KEY] isEqualToString: WEB_SEED_ANIMATION_ID])
-        return;
-
-    [[fWebSeedTable enclosingScrollView] setHidden: NO];
-}
-
-- (void) animationDidStop: (CAAnimation *) animation finished: (BOOL) finished
-{
-    if (![[animation valueForKey: ANIMATION_ID_KEY] isEqualToString: WEB_SEED_ANIMATION_ID])
-        return;
-
-    [[fWebSeedTable enclosingScrollView] setHidden: finished && fWebSeedTableTopConstraint.constant < 0];
-}
-
 @end
 
 @implementation InfoPeersViewController (Private)
@@ -485,19 +464,17 @@
     }
     else
         [fWebSeedTable deselectAll: self];
-    [self setWebSeedTableHidden: !hasWebSeeds animate: YES];
+    [self setWebSeedTableHidden: !hasWebSeeds];
 
     fSet = YES;
 }
 
-- (void) setWebSeedTableHidden: (BOOL) hide animate: (BOOL) animate
+- (void) setWebSeedTableHidden: (BOOL) hide
 {
-    if (animate && (![[self view] window] || ![[[self view] window] isVisible]))
-        animate = NO;
 
     const CGFloat webSeedTableTopMargin = hide ? -NSHeight([[fWebSeedTable enclosingScrollView] frame]) : fViewTopMargin;
 
-    [(animate ? [fWebSeedTableTopConstraint animator] : fWebSeedTableTopConstraint) setConstant: webSeedTableTopMargin];
+    [fWebSeedTableTopConstraint setConstant: webSeedTableTopMargin];
 }
 
 - (NSArray *) peerSortDescriptors
