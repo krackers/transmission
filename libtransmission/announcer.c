@@ -394,7 +394,7 @@ static void tierConstruct(tr_tier* tier, tr_torrent* tor)
     tier->scrapeIntervalSec = DEFAULT_SCRAPE_INTERVAL_SEC;
     tier->announceIntervalSec = DEFAULT_ANNOUNCE_INTERVAL_SEC;
     tier->announceMinIntervalSec = DEFAULT_ANNOUNCE_MIN_INTERVAL_SEC;
-    tier->scrapeAt = get_next_scrape_time(tor->session, tier, 0);
+    tier->scrapeAt = get_next_scrape_time(tor->session, tier, tr_rand_int_weak(60));
     tier->tor = tor;
 }
 
