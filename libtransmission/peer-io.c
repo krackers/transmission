@@ -191,7 +191,7 @@ static void canReadWrapper(tr_peerIo* io)
     bool done = false;
     tr_session* session;
 
-    dbgmsg(io, "canRead");
+    //dbgmsg(io, "in canRead");
 
     tr_peerIoRef(io);
 
@@ -281,7 +281,7 @@ static void event_read_cb(evutil_socket_t fd, short event UNUSED, void* vio)
     howmuch = curlen >= max ? 0 : max - curlen;
     howmuch = tr_bandwidthClamp(&io->bandwidth, TR_DOWN, howmuch);
 
-    dbgmsg(io, "libevent says this peer is ready to read");
+    //dbgmsg(io, "libevent says this peer is ready to read");
 
     /* if we don't have any bandwidth left, stop reading */
     if (howmuch < 1)
@@ -326,6 +326,7 @@ static void event_read_cb(evutil_socket_t fd, short event UNUSED, void* vio)
 
         if (io->gotError != NULL)
         {
+            errno = e;
             io->gotError(io, what, io->userData);
         }
     }
@@ -340,7 +341,7 @@ static int tr_evbuffer_write(tr_peerIo* io, int fd, size_t howmuch)
     EVUTIL_SET_SOCKET_ERROR(0);
     n = evbuffer_write_atmost(io->outbuf, fd, howmuch);
     e = EVUTIL_SOCKET_ERROR();
-    dbgmsg(io, "wrote %d to peer (%s)", n, (n == -1 ? tr_net_strerror(errstr, sizeof(errstr), e) : ""));
+    //dbgmsg(io, "wrote %d to peer (%s)", n, (n == -1 ? tr_net_strerror(errstr, sizeof(errstr), e) : ""));
 
     return n;
 }
@@ -361,7 +362,7 @@ static void event_write_cb(evutil_socket_t fd, short event UNUSED, void* vio)
 
     io->pendingEvents &= ~EV_WRITE;
 
-    dbgmsg(io, "libevent says this peer is ready to write");
+    //dbgmsg(io, "libevent says this peer is ready to write");
 
     /* Write as much as possible, since the socket is non-blocking, write() will
      * return if it can't write any more data without blocking */
@@ -421,6 +422,7 @@ error:
 
     if (io->gotError != NULL)
     {
+        errno = e;
         io->gotError(io, what, io->userData);
     }
 }
@@ -447,7 +449,7 @@ static void utp_on_read(void* closure, unsigned char const* buf, size_t buflen)
     TR_ASSERT(tr_isPeerIo(io));
 
     int rc = evbuffer_add(io->inbuf, buf, buflen);
-    dbgmsg(io, "utp_on_read got %zu bytes", buflen);
+    //dbgmsg(io, "utp_on_read got %zu bytes", buflen);
 
     if (rc < 0)
     {
@@ -466,7 +468,7 @@ static void utp_on_write(void* closure, unsigned char* buf, size_t buflen)
     TR_ASSERT(tr_isPeerIo(io));
 
     int rc = evbuffer_remove(io->outbuf, buf, buflen);
-    dbgmsg(io, "utp_on_write sending %zu bytes... evbuffer_remove returned %d", buflen, rc);
+    //dbgmsg(io, "utp_on_write sending %zu bytes... evbuffer_remove returned %d", buflen, rc);
     TR_ASSERT(rc == (int)buflen); /* if this fails, we've corrupted our bookkeeping somewhere */
 
     if (rc < (long)buflen)
@@ -485,7 +487,7 @@ static size_t utp_get_rb_size(void* closure)
 
     size_t bytes = tr_bandwidthClamp(&io->bandwidth, TR_DOWN, UTP_READ_BUFFER_SIZE);
 
-    dbgmsg(io, "utp_get_rb_size is saying it's ready to read %zu bytes", bytes);
+    //dbgmsg(io, "utp_get_rb_size is saying it's ready to read %zu bytes", bytes);
     return UTP_READ_BUFFER_SIZE - bytes;
 }
 
@@ -495,7 +497,7 @@ static void utp_on_writable(tr_peerIo* io)
 {
     int n;
 
-    dbgmsg(io, "libutp says this peer is ready to write");
+    //dbgmsg(io, "libutp says this peer is ready to write");
 
     n = tr_peerIoTryWrite(io, SIZE_MAX);
     tr_peerIoSetEnabled(io, TR_UP, n != 0 && evbuffer_get_length(io->outbuf) != 0);
@@ -514,7 +516,7 @@ static void utp_on_state_change(void* closure, int state)
     }
     else if (state == UTP_STATE_WRITABLE)
     {
-        dbgmsg(io, "utp_on_state_change -- changed to writable");
+        //dbgmsg(io, "utp_on_state_change -- changed to writable");
 
         if ((io->pendingEvents & EV_WRITE) != 0)
         {
@@ -560,7 +562,7 @@ static void utp_on_overhead(void* closure, uint8_t /* bool */ send, size_t count
 
     TR_ASSERT(tr_isPeerIo(io));
 
-    dbgmsg(io, "utp_on_overhead -- count is %zu", count);
+    //dbgmsg(io, "utp_on_overhead -- count is %zu", count);
 
     tr_bandwidthUsed(&io->bandwidth, send ? TR_UP : TR_DOWN, count, false, tr_time_msec());
 }
@@ -749,7 +751,7 @@ static void event_enable(tr_peerIo* io, short event)
 
     if ((event & EV_READ) != 0 && (io->pendingEvents & EV_READ) == 0)
     {
-        dbgmsg(io, "enabling ready-to-read polling");
+        //dbgmsg(io, "enabling ready-to-read polling");
 
         if (need_events)
         {
@@ -761,7 +763,7 @@ static void event_enable(tr_peerIo* io, short event)
 
     if ((event & EV_WRITE) != 0 && (io->pendingEvents & EV_WRITE) == 0)
     {
-        dbgmsg(io, "enabling ready-to-write polling");
+        //dbgmsg(io, "enabling ready-to-write polling");
 
         if (need_events)
         {
@@ -788,7 +790,7 @@ static void event_disable(struct tr_peerIo* io, short event)
 
     if ((event & EV_READ) != 0 && (io->pendingEvents & EV_READ) != 0)
     {
-        dbgmsg(io, "disabling ready-to-read polling");
+        //dbgmsg(io, "disabling ready-to-read polling");
 
         if (need_events)
         {
@@ -800,7 +802,7 @@ static void event_disable(struct tr_peerIo* io, short event)
 
     if ((event & EV_WRITE) != 0 && (io->pendingEvents & EV_WRITE) != 0)
     {
-        dbgmsg(io, "disabling ready-to-write polling");
+        //dbgmsg(io, "disabling ready-to-write polling");
 
         if (need_events)
         {
@@ -893,7 +895,7 @@ static void io_dtor(void* vio)
     TR_ASSERT(tr_amInEventThread(io->session));
     TR_ASSERT(io->session->events != NULL);
 
-    dbgmsg(io, "in tr_peerIo destructor");
+    //dbgmsg(io, "in tr_peerIo destructor");
     event_disable(io, EV_READ | EV_WRITE);
     tr_bandwidthDestruct(&io->bandwidth);
     evbuffer_free(io->outbuf);
@@ -910,7 +912,7 @@ static void tr_peerIoFree(tr_peerIo* io)
 {
     if (io != NULL)
     {
-        dbgmsg(io, "in tr_peerIoFree");
+        //dbgmsg(io, "in tr_peerIoFree");
         io->canRead = NULL;
         io->didWrite = NULL;
         io->gotError = NULL;
@@ -922,7 +924,7 @@ void tr_peerIoRefImpl(char const* file, int line, tr_peerIo* io)
 {
     TR_ASSERT(tr_isPeerIo(io));
 
-    dbgmsg(io, "%s:%d is incrementing the IO's refcount from %d to %d", file, line, io->refCount, io->refCount + 1);
+    //dbgmsg(io, "%s:%d is incrementing the IO's refcount from %d to %d", file, line, io->refCount, io->refCount + 1);
 
     ++io->refCount;
 }
@@ -931,7 +933,7 @@ void tr_peerIoUnrefImpl(char const* file, int line, tr_peerIo* io)
 {
     TR_ASSERT(tr_isPeerIo(io));
 
-    dbgmsg(io, "%s:%d is decrementing the IO's refcount from %d to %d", file, line, io->refCount, io->refCount - 1);
+    //dbgmsg(io, "%s:%d is decrementing the IO's refcount from %d to %d", file, line, io->refCount, io->refCount - 1);
 
     if (--io->refCount == 0)
     {
@@ -1319,7 +1321,7 @@ static int tr_peerIoTryRead(tr_peerIo* io, size_t howmuch)
                 res = evbuffer_read(io->inbuf, io->socket.handle.tcp, (int)howmuch);
                 e = EVUTIL_SOCKET_ERROR();
 
-                dbgmsg(io, "read %d from peer (%s)", res, res == -1 ? tr_net_strerror(err_buf, sizeof(err_buf), e) : "");
+                //dbgmsg(io, "read %d from peer (%s)", res, res == -1 ? tr_net_strerror(err_buf, sizeof(err_buf), e) : "");
 
                 if (evbuffer_get_length(io->inbuf) != 0)
                 {
@@ -1337,7 +1339,7 @@ static int tr_peerIoTryRead(tr_peerIo* io, size_t howmuch)
 
                     dbgmsg(io, "tr_peerIoTryRead got an error. res is %d, what is %hd, errno is %d (%s)", res, what, e,
                         tr_net_strerror(err_buf, sizeof(err_buf), e));
-
+                    errno = e;
                     io->gotError(io, what, io->userData);
                 }
 
@@ -1356,7 +1358,7 @@ static int tr_peerIoTryWrite(tr_peerIo* io, size_t howmuch)
 {
     int n = 0;
     size_t const old_len = evbuffer_get_length(io->outbuf);
-    dbgmsg(io, "in tr_peerIoTryWrite %zu", howmuch);
+    //dbgmsg(io, "in tr_peerIoTryWrite , writing %zu", howmuch);
 
     if (howmuch > old_len)
     {
@@ -1392,7 +1394,8 @@ static int tr_peerIoTryWrite(tr_peerIo* io, size_t howmuch)
 
                     dbgmsg(io, "tr_peerIoTryWrite got an error. res is %d, what is %hd, errno is %d (%s)", n, what, e,
                         tr_net_strerror(errstr, sizeof(errstr), e));
-
+                    // Explicitly restore errno after the print
+                    errno = e;
                     io->gotError(io, what, io->userData);
                 }
 
@@ -1423,7 +1426,7 @@ int tr_peerIoFlush(tr_peerIo* io, tr_direction dir, size_t limit)
         bytesUsed = tr_peerIoTryWrite(io, limit);
     }
 
-    dbgmsg(io, "flushing peer-io, direction %d, limit %zu, bytesUsed %d", (int)dir, limit, bytesUsed);
+    // dbgmsg(io, "flushing peer-io, direction %d, limit %zu, bytesUsed %d", (int)dir, limit, bytesUsed);
     return bytesUsed;
 }
 
