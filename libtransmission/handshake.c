@@ -11,6 +11,7 @@
 
 #include <event2/buffer.h>
 #include <event2/event.h>
+#include <event2/bufferevent.h>
 
 #include "transmission.h"
 #include "clients.h"
@@ -243,8 +244,9 @@ static void sendYa(tr_handshake* handshake)
     walk += len;
 
     /* send it */
-    setReadState(handshake, AWAITING_YB);
+    dbgmsg(handshake, "sendYa: Writing %ld bytes", walk - outbuf);
     tr_peerIoWriteBytes(handshake->io, outbuf, walk - outbuf, false);
+    setReadState(handshake, AWAITING_YB);
 }
 
 static uint32_t getCryptoProvide(tr_handshake const* handshake)
@@ -1126,7 +1128,9 @@ static void gotError(tr_peerIo* io, short what, void* vhandshake)
     // clients may have the require-encryption enabled (many users misunderstand what it does, and such
     // users may have checked the box without understanding the details or conseqeuences).
     bool resendPlainHandshake = false;
-    dbgmsg(handshake, "libevent got an error what==%d, errno=%d (%s)", (int)what, errno, tr_strerror(errno));
+    dbgmsg(handshake, "libevent got an error what==%d, errno=%d (%s%s)",
+           (int)what, errno, tr_strerror(errno), (what & BEV_EVENT_EOF)  ? " eof " : "");
+
 
     if (io->socket.type == TR_PEER_SOCKET_TYPE_UTP && !io->isIncoming && 
         (handshake->state == AWAITING_YB /* encrypted utp */||
@@ -1225,6 +1229,8 @@ tr_handshake* tr_handshakeNew(tr_peerIo* io, tr_encryption_mode encryptionMode, 
     tr_peerIoRef(io); /* balanced by the unref in tr_handshakeFree */
     tr_peerIoSetIOFuncs(handshake->io, canRead, NULL, gotError, handshake);
     tr_peerIoSetEncryption(io, PEER_ENCRYPTION_NONE);
+
+    dbgmsg(handshake, "New %s handshake requested.", io->socket.type == TR_PEER_SOCKET_TYPE_UTP ? "utp" : "tcp");
 
     if (tr_peerIoIsIncoming(handshake->io))
     {
