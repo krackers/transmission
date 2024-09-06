@@ -49,6 +49,8 @@
 
 - (void) setGroupStatusColumns;
 
+- (BOOL)_hasAutoCanDrawSubviewsIntoLayer;
+
 @end
 
 @implementation TorrentTableView
@@ -92,37 +94,42 @@
     //set group columns to show ratio, needs to be in awakeFromNib to size columns correctly
     [self setGroupStatusColumns];
     [[NSNotificationCenter defaultCenter] addObserver: self selector: @selector(setNeedsDisplay) name: @"RefreshTorrentTable" object: nil];
+}
 
-    // Fix glitch when collapsing torrent groups on 10.9.
-    // Must be done after awake for nib, or else we get visual glitches
+- (void)expandItem:(id)item {
+    // Needed to get glitch-free animation when collapsing/expanding groups.
+    // Doing this too early (e.g. inside awakeFromNib) causes weird drawing glitches
+    // so this place was selected arbitrarily.
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (![self wantsLayer]) {
+        if ([self _hasAutoCanDrawSubviewsIntoLayer]) {
             // By default, we have wantsLayer=no, canDrawSubviewsIntoLayer=yes, autoCanDrawSubviewsIntoLayer=yes
+            // You might think that because that because canDrawSubivewsIntoLayer starts off as yes,
+            // the below call is a noop. Instead the below call has a side-effect of setting autoCanDrawSubviewsIntoLayer=no
+            //  while keeping canDrawSubviewsIntoLayer=yes.
             //
-            // 1) By default this view doesn't request its own layer (since wantsLayer is no).
-            //    but I suspect one of its parents uses layers and so an "implicit" layer is created or something (its layer property is non-nil).
+            // 1) by default this view doesn't request its own layer (since wantsLayer is no).
+            //    but I suspect one of its parents or children uses layers and so an "implicit" layer is created or something?
             //    The default of {wantsLayer=no, autoCan=yes, can=yes} gives results same as {wantsLayer=yes, autoCan=yes, can=yes}.
             // 2) If we manually set autoCanDrawSubviewsIntoLayer = no, then canDrawSubviewsIntoLayer also gets set to no.
             //    But the tuple {wantsLayer=no, autoCan = no, can = no} behaves the same as {wantsLayer=yes, autoCan = no, can = no}
             //    in that the expand glitch is fixed, but fonts slightly shift when expanding.
             // 3) {wantsLayer=no, autoCan=no, can=yes} fixes everything.
             //
-            //  Based on the quote in apple's docs "To prevent a subview from having its contents flattened
-            //  into this [parent] view’s layer, explicitly set the value of the subview’s wantsLayer property
-            //  to YES." and the hypothesis in (1) that there _is_ a layer-backed parent,
-            //  (and so this view piggybacks onto that parent's layer):
+            //
+            // It's also interesting to note that despite wantsLayer=no, [self layer] is non-nil. Based on the quote in apple's docs
+            // "To prevent a subview from having its contents flattened into this [parent] view’s layer, explicitly set the value of the subview’s
+            //   wantsLayer property to YES." I think this accords with the hypothesis in (1) that there _is_ a layer-backed parent,
+            // and so this view piggybacks onto that parent's layer.
             //
             // Based on all the above I suspect that what the "auto" flag actually controls is whether _this_ view can be drawn directly
             // into the layer of a parent (regardless of what the parent might have set canDrawSubviewsIntoLayer as). This explains
             // all of the phenomenon: in (1) where we have the black-box glitch we are always drawing into the parent layer. In (2) we don't
             // draw into the parent layer, but our children get their own layer causing some glitches. And in (3) we don't draw into our parent layer
             // but our children do.
-            //
-            // The below call has a key side-effect of also setting autoCanDrawSubviewsIntoLayer=no.
-            [self setWantsLayer: YES];
             [self setCanDrawSubviewsIntoLayer: YES];
         }
     });
+    [super expandItem: item];
 }
 
 - (BOOL) isGroupCollapsed: (NSInteger) value
