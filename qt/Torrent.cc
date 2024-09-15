@@ -72,6 +72,7 @@ Property constexpr myProperties[] =
     { Torrent::DOWN_LIMITED, TR_KEY_downloadLimited, QVariant::Bool },
     { Torrent::UP_LIMIT, TR_KEY_uploadLimit, QVariant::Int }, /* KB/s */
     { Torrent::UP_LIMITED, TR_KEY_uploadLimited, QVariant::Bool },
+    { Torrent::SEQUENTIAL_DOWNLOAD, TR_KEY_sequentialDownload, QVariant::Bool },
     { Torrent::HONORS_SESSION_LIMITS, TR_KEY_honorsSessionLimits, QVariant::Bool },
     { Torrent::PEER_LIMIT, TR_KEY_peer_limit, QVariant::Int },
     { Torrent::HASH_STRING, TR_KEY_hashString, QVariant::String },
@@ -162,6 +163,7 @@ Torrent::KeyList const Torrent::detailStatKeys{
     TR_KEY_peers,
     TR_KEY_seedIdleLimit,
     TR_KEY_seedIdleMode,
+    TR_KEY_sequentialDownload,
     TR_KEY_startDate,
     TR_KEY_trackerStats,
     TR_KEY_uploadLimit,

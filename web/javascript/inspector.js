@@ -200,6 +200,28 @@ function Inspector(controller) {
             setTextContent(e.availability_lb, str);
 
             //
+            //  sequential_lb
+            //
+
+            if (torrents.length < 1) {
+                str = none;
+            } else {
+                str = torrents[0].getSequential();
+                for (i = 0; t = torrents[i]; ++i) {
+                    if(str != t.getSequential()) {
+                        str = mixed;
+                        break;
+                    }
+                }
+            }
+            if (typeof str == "boolean") {
+                setTextContent(e.sequential_lb, str ? "Yes" : "No");
+            } else {
+                setTextContent(e.sequential_lb, str || none);
+            }
+
+
+            //
             //  downloaded_lb
             //
 
@@ -837,6 +859,7 @@ function Inspector(controller) {
             data.elements.origin_lb = $('#inspector-info-origin')[0];
             data.elements.comment_lb = $('#inspector-info-comment')[0];
             data.elements.name_lb = $('#torrent_inspector_name')[0];
+            data.elements.sequential_lb = $('#inspector-info-sequential-download')[0];
 
             // force initial 'N/A' updates on all the pages
             updateInspector();

@@ -951,6 +951,8 @@ static void torrentInit(tr_torrent* tor, tr_ctor const* ctor)
     tor->error = TR_STAT_OK;
     tor->finishedSeedingByIdle = false;
 
+    tor->sequentialDownload = false;
+
     tr_peerMgrAddTorrent(session->peerMgr, tor);
 
     TR_ASSERT(tor->downloadedCur == 0);
@@ -2523,6 +2525,25 @@ void tr_torrentSetPriority(tr_torrent* tor, tr_priority_t priority)
     if (tor->bandwidth.priority != priority)
     {
         tor->bandwidth.priority = priority;
+
+        tr_torrentSetDirty(tor);
+    }
+}
+
+bool tr_torrentGetSequentialDownload(const tr_torrent* tor)
+{
+    TR_ASSERT(tr_isTorrent(tor));
+
+    return tor->sequentialDownload;
+}
+
+void tr_torrentSetSequentialDownload(tr_torrent* tor, bool sequential)
+{
+    TR_ASSERT(tr_isTorrent(tor));
+
+    if (tor->sequentialDownload != sequential)
+    {
+        tor->sequentialDownload = sequential;
 
         tr_torrentSetDirty(tor);
     }

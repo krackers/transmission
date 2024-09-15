@@ -87,6 +87,7 @@ private slots:
     void onRatioModeChanged(int);
     void onIdleModeChanged(int);
     void onIdleLimitChanged();
+    void onSequentialToggled(bool);
 
 private:
     Session& mySession;
