@@ -22,23 +22,34 @@ typedef struct tr_completion
 
     tr_bitfield blockBitfield;
 
-    /* number of bytes we'll have when done downloading. [0..info.totalSize]
+    /* Cached target byte count. Sum of all 'Wanted' pieces plus any 
+       already-downloaded blocks residing in 'Do Not Download' pieces. 
+       [0..info.totalSize] 
        DON'T access this directly; it's a lazy field.
-       use tr_cpSizeWhenDone() instead! */
+       Use tr_cpSizeWhenDone() instead! */
     uint64_t sizeWhenDoneLazy;
 
-    /* whether or not sizeWhenDone needs to be recalculated */
+    /* Set when sizeWhenDone needs to be recalculated.
+       Dirtied when file DND priorities change, or when blocks belonging 
+       to purely DND pieces are added/removed. */
     bool sizeWhenDoneIsDirty;
 
-    /* number of bytes we'll have when done downloading. [0..info.totalSize]
+    /* Cached byte count of all fully complete, checksum-verified pieces. 
+       [0..info.totalSize]
        DON'T access this directly; it's a lazy field.
-       use tr_cpHaveValid() instead! */
+       Use tr_cpHaveValid() instead! */
     uint64_t haveValidLazy;
 
-    /* whether or not haveValidLazy needs to be recalculated */
+    /* Set when haveValidLazy needs to be recalculated.
+       Dirtied when a piece finishes downloading and passes 
+       its hash check, or when a piece is removed/discarded */
     bool haveValidIsDirty;
 
-    /* number of bytes we want or have now. [0..sizeWhenDone] */
+    /* Total byte count for all downloading/downloaded blocks.
+       This tracks the raw block bitfield and includes verified blocks, 
+       unverified or partial blocks, and orphaned blocks belonging to DND files. 
+       (haveValid + haveUnchecked)
+       [0..sizeWhenDone] */
     uint64_t sizeNow;
 }
 tr_completion;

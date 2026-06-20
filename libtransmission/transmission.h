@@ -1786,18 +1786,35 @@ typedef struct tr_stat
     /** Number of webseeds that are sending data to us. */
     int webseedsSendingToUs;
 
-    /** Byte count of all the piece data we'll have downloaded when we're done,
-        whether or not we have it yet. This may be less than tr_info.totalSize
-        if only some of the torrent's files are wanted.
+    /** Byte count of total piece data required for torrent to be considered 'Done'
+        This may be less than tr_info.totalSize if only some of the torrent's files
+        are wanted (DND). This may be much larger than the actual target file size
+        on disk because file boundaries may not align with piece boundaries, 
+        and users can exclude files mid-download, whereas this count "preserves" the
+        bytes from any already-downloaded blocks that reside in 100% DND pieces.
+     
         [0...tr_info.totalSize] */
     uint64_t sizeWhenDone;
 
-    /** Byte count of how much data is left to be downloaded until we've got
-        all the pieces that we want. [0...tr_info.sizeWhenDone] */
+    /** Byte count of all piece data that needs to be downloaded
+        until the torrent is done (sizeWhenDone - sizeNow). 
+        Note: Because Transmission optimistically assumes unverified 
+        blocks are good, this remaining deficit DOES NOT include bytes 
+        already downloaded but waiting to be checksum verified. If those 
+        bytes eventually fail verification, they are purged and this 
+        value increases.
+        [0...tr_info.sizeWhenDone] */
     uint64_t leftUntilDone;
 
-    /** Byte count of all the piece data we want and don't have yet,
-        but that a connected peer does have. [0...leftUntilDone] */
+    /** Byte count of all the piece data we still want to request from the 
+        network AND which is actually available
+        (from at least one connected peer).
+        Note: This optimistically only tracks bytes that actually need 
+        to be requested over the network. Bytes that are downloaded but 
+        pending verification are treated as 'already acquired' and are 
+        excluded from this total. If a torrent has peers
+        which are 100% seeded, then this is equivalent to leftUntilDone.
+        [0...leftUntilDone] */
     uint64_t desiredAvailable;
 
     /** Byte count of all the corrupt data you've ever downloaded for
@@ -1813,13 +1830,20 @@ typedef struct tr_stat
         time, this will be 2*totalSize.. */
     uint64_t downloadedEver;
 
-    /** Byte count of all the checksum-verified data we have for this torrent.
-      */
+    /** Byte count of all the fully downloaded/complete, checksum-verified pieces 
+        we have for this torrent. */
     uint64_t haveValid;
 
-    /** Byte count of all the partial piece data we have for this torrent.
-        As pieces become complete, this value may decrease as portions of it
-        are moved to `corrupt' or `haveValid'. */
+    /** Byte count of all downloaded data that has not yet been verified
+        This covers two separate cases:
+
+        1. Partial Pieces: Individual blocks (e.g., 16 KB) of pieces that 
+        are currently downloading.
+        2. Unverified Complete Pieces: Fully downloaded pieces that are 
+        waiting in the queue for the CPU to perform the hash check.
+        
+        As pieces pass verification, their bytes are subtracted from 
+        this value and added to `haveValid` (or `corruptEver`). */
     uint64_t haveUnchecked;
 
     /** time when one or more of the torrent's trackers will

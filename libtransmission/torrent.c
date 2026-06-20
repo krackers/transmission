@@ -1372,8 +1372,18 @@ tr_stat const* tr_torrentStat(tr_torrent* tor)
     s->percentComplete = tr_cpPercentComplete(&tor->completion);
     s->metadataPercentComplete = tr_torrentGetMetadataPercent(tor);
 
-    s->percentDone = tr_cpPercentDone(&tor->completion);
+    /* Calculate desiredAvailable earliest, to capture the highest
+       possible on-network bytes deficit. */
+    s->desiredAvailable = tr_peerMgrGetDesiredAvailable(tor);
+    /* If a block arrives after desiredAvailable computed but before
+       leftUntilDone computed, desiredAvailable will be larger than leftUntilDone.
+       This is detectable and better than the converse where we could not distinguish
+       from a genuinely stalled torrent. */
     s->leftUntilDone = tr_torrentGetLeftUntilDone(tor);
+    /* Cap desiredAvailable, since it must logically be less than leftUntilDone */
+    s->desiredAvailable = MIN(s->desiredAvailable, s->leftUntilDone);
+
+    s->percentDone = tr_cpPercentDone(&tor->completion);
     s->sizeWhenDone = tr_cpSizeWhenDone(&tor->completion);
     s->recheckProgress = s->activity == TR_STATUS_CHECK ? getVerifyProgress(tor) : 0;
     s->activityDate = tor->activityDate;
@@ -1390,7 +1400,6 @@ tr_stat const* tr_torrentStat(tr_torrent* tor)
     s->uploadedEver = tor->uploadedCur + tor->uploadedPrev;
     s->haveValid = tr_cpHaveValid(&tor->completion);
     s->haveUnchecked = tr_torrentHaveTotal(tor) - s->haveValid;
-    s->desiredAvailable = tr_peerMgrGetDesiredAvailable(tor);
 
     s->ratio = tr_getRatio(s->uploadedEver, s->downloadedEver != 0 ? s->downloadedEver : s->haveValid);
 
