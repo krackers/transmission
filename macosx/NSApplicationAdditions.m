@@ -26,7 +26,7 @@
 
 - (BOOL) isOnYosemiteOrBetter
 {
-    return floor(NSAppKitVersionNumber) > NSAppKitVersionNumber10_9;
+    return false;
 }
 
 @end

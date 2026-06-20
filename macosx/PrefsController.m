@@ -22,7 +22,7 @@
 
 #import <Foundation/Foundation.h>
 
-#import <Sparkle/Sparkle.h>
+
 
 #include <libtransmission/transmission.h>
 #include <libtransmission/utils.h>

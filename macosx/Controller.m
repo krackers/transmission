@@ -25,7 +25,7 @@
 #import <Carbon/Carbon.h>
 #import <libkern/OSAtomic.h>
 
-#import <Sparkle/Sparkle.h>
+
 
 #include <libtransmission/transmission.h>
 #include <libtransmission/utils.h>
@@ -694,7 +694,7 @@ const NSString* kTemplateIcons[] = {
         if ([fDefaults boolForKey: @"CheckQuitDownloading"] ? downloading > 0 : active > 0)
         {
             NSAlert *alert = [[NSAlert alloc] init];
-            alert.alertStyle = NSAlertStyleInformational;
+            alert.alertStyle = NSInformationalAlertStyle;
             alert.messageText = NSLocalizedString(@"Are you sure you want to quit?", "Confirm Quit panel -> title");
             alert.informativeText = active == 1
                 ? NSLocalizedString(@"There is an active transfer that will be paused on quit."
@@ -1409,7 +1409,7 @@ const NSString* kTemplateIcons[] = {
             }
 
             NSAlert *alert = [[NSAlert alloc] init];
-            alert.alertStyle = NSAlertStyleInformational;
+            alert.alertStyle = NSInformationalAlertStyle;
             alert.messageText = title;
             alert.informativeText = message;
             [alert addButtonWithTitle:NSLocalizedString(@"Remove", "Removal confirm panel -> button")];
@@ -3676,10 +3676,6 @@ const NSString* kTemplateIcons[] = {
         [groupItem setView: segmentedControl];
         NSSegmentedCell * segmentedCell = (NSSegmentedCell *)[segmentedControl cell];
 
-        if ([NSApp isOnYosemiteOrBetter]) {
-            segmentedControl.segmentStyle = NSSegmentStyleSeparated;
-        }
-
         [segmentedControl setSegmentCount: 2];
         [segmentedCell setTrackingMode: NSSegmentSwitchTrackingMomentary];
 
@@ -3696,11 +3692,9 @@ const NSString* kTemplateIcons[] = {
 
         [segmentedCell setTag: TOOLBAR_PAUSE_TAG forSegment: TOOLBAR_PAUSE_TAG];
         [segmentedControl setImage: [NSImage imageNamed: @"ToolbarPauseAllTemplate"] forSegment: TOOLBAR_PAUSE_TAG];
-        if (@available(macOS 10.10, *)) {
-            // Default inferred style works fine
-        } else {
+    
             [segmentedControl setSegmentStyle: NSSegmentStyleTexturedSquare];
-        }
+
         [segmentedCell setToolTip: NSLocalizedString(@"Pause all transfers",
                                     "All toolbar item -> tooltip") forSegment: TOOLBAR_PAUSE_TAG];
 
@@ -3726,9 +3720,7 @@ const NSString* kTemplateIcons[] = {
         [groupItem setView: segmentedControl];
         NSSegmentedCell * segmentedCell = (NSSegmentedCell *)[segmentedControl cell];
 
-        if ([NSApp isOnYosemiteOrBetter]) {
-            segmentedControl.segmentStyle = NSSegmentStyleSeparated;
-        }
+      
 
         [segmentedControl setSegmentCount: 2];
         [segmentedCell setTrackingMode: NSSegmentSwitchTrackingMomentary];
@@ -4472,7 +4464,7 @@ const NSString* kTemplateIcons[] = {
     [[NSWorkspace sharedWorkspace] openURL: [NSURL URLWithString: DONATE_URL]];
 }
 
-- (void) updaterWillRelaunchApplication: (SUUpdater *) updater
+- (void) updaterWillRelaunchApplication: (id) updater
 {
     fQuitRequested = YES;
 }

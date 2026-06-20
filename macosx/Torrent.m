@@ -1842,14 +1842,7 @@ bool trashDataFile(const char * filename, tr_error ** error)
             //quarantine the finished data
             NSString * dataLocation = [[self currentDirectory] stringByAppendingPathComponent: [self name]];
             NSDictionary * quarantineProperties = @{ (NSString *)kLSQuarantineTypeKey : (NSString *)kLSQuarantineTypeOtherDownload };
-            if ([NSApp isOnYosemiteOrBetter])
-            {
-                NSURL * dataLocationUrl = [NSURL fileURLWithPath: dataLocation];
-                NSError * error = nil;
-                if (![dataLocationUrl setResourceValue: quarantineProperties forKey: NSURLQuarantinePropertiesKey error: &error])
-                    NSLog(@"Failed to quarantine %@: %@", dataLocation, [error description]);
-            }
-            else
+        
             {
                 NSString * dataLocation = [[self currentDirectory] stringByAppendingPathComponent: [self name]];
                 FSRef ref;
@@ -1993,22 +1986,9 @@ bool trashDataFile(const char * filename, tr_error ** error)
 
     NSString * idleString;
 
-    if ([NSApp isOnYosemiteOrBetter]) {
-        static NSDateComponentsFormatter *formatter;
-        static dispatch_once_t onceToken;
-        dispatch_once(&onceToken, ^{
-            formatter = [NSDateComponentsFormatter new];
-            formatter.unitsStyle = NSDateComponentsFormatterUnitsStyleShort;
-            formatter.maximumUnitCount = 2;
-            formatter.collapsesLargestUnit = YES;
-            formatter.includesTimeRemainingPhrase = YES;
-        });
-
-        idleString = [formatter stringFromTimeInterval: eta];
-    }
-    else {
+  
         idleString = [NSString timeString: eta includesTimeRemainingPhrase: YES showSeconds: YES maxFields: 2];
-    }
+
 
     if (fromIdle) {
         idleString = [idleString stringByAppendingFormat: @" (%@)", NSLocalizedString(@"inactive", "Torrent -> eta string")];

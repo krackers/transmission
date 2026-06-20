@@ -213,7 +213,7 @@ NSMutableSet * fTrackerIconLoading;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         NSImage *icon = nil;
         
-        NSArray<NSString *> *filenamesToTry = @[ @"favicon.png", @"favicon.ico" ];
+        NSArray *filenamesToTry = @[ @"favicon.png", @"favicon.ico" ];
         for (NSString *filename in filenamesToTry) {
             NSURL * favIconUrl = [NSURL URLWithString: [baseAddress stringByAppendingPathComponent:filename]];
             

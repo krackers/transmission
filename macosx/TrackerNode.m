@@ -158,21 +158,9 @@
             const NSTimeInterval nextAnnounceTimeLeft = fStat.nextAnnounceTime - [[NSDate date] timeIntervalSince1970];
 
             NSString *timeString;
-            if ([NSApp isOnYosemiteOrBetter]) {
-                static NSDateComponentsFormatter *formatter;
-                static dispatch_once_t onceToken;
-                dispatch_once(&onceToken, ^{
-                    formatter = [NSDateComponentsFormatter new];
-                    formatter.unitsStyle = NSDateComponentsFormatterUnitsStyleAbbreviated;
-                    formatter.zeroFormattingBehavior = NSDateComponentsFormatterZeroFormattingBehaviorDropLeading;
-                    formatter.collapsesLargestUnit = YES;
-                });
+            
+            timeString = [NSString timeString: nextAnnounceTimeLeft includesTimeRemainingPhrase: NO showSeconds: YES];
 
-                timeString = [formatter stringFromTimeInterval: nextAnnounceTimeLeft];
-            }
-            else {
-                timeString = [NSString timeString: nextAnnounceTimeLeft includesTimeRemainingPhrase: NO showSeconds: YES];
-            }
             return [NSString stringWithFormat: NSLocalizedString(@"Next announce in %@", "Tracker next announce"),
                     timeString];
         }

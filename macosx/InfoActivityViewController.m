@@ -179,23 +179,10 @@
         //uses a relative date, so can't be set once
         [fDateAddedField setObjectValue: [torrent dateAdded]];
 
-        if ([NSApp isOnYosemiteOrBetter]) {
-            static NSDateComponentsFormatter *timeFormatter;
-            static dispatch_once_t onceToken;
-            dispatch_once(&onceToken, ^{
-                timeFormatter = [NSDateComponentsFormatter new];
-                timeFormatter.unitsStyle = NSDateComponentsFormatterUnitsStyleShort;
-                timeFormatter.allowedUnits = NSCalendarUnitDay | NSCalendarUnitHour | NSCalendarUnitMinute | NSCalendarUnitSecond;
-                timeFormatter.zeroFormattingBehavior = NSDateComponentsFormatterZeroFormattingBehaviorDropLeading;
-            });
-
-            [fDownloadTimeField setStringValue: [timeFormatter stringFromTimeInterval:[torrent secondsDownloading]]];
-            [fSeedTimeField setStringValue: [timeFormatter stringFromTimeInterval:[torrent secondsSeeding]]];
-        }
-        else {
+       
             [fDownloadTimeField setStringValue: [NSString timeString: [torrent secondsDownloading] includesTimeRemainingPhrase:NO showSeconds: YES]];
             [fSeedTimeField setStringValue: [NSString timeString: [torrent secondsSeeding] includesTimeRemainingPhrase:NO showSeconds: YES]];
-        }
+
 
         [fPiecesView updateView];
     }
