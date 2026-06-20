@@ -64,6 +64,8 @@ bool tr_logGetDeepEnabled(void);
 void tr_logAddDeep(char const* file, int line, char const* name, char const* fmt, ...) TR_GNUC_PRINTF(4, 5) \
     TR_GNUC_NONNULL(1, 4);
 
+// Note: always check before logAddDeep() even if tr_logAddDeep has its own check to avoid
+// unnecessary evaluation of _VA_ARGS__
 #define tr_logAddDeepNamed(name, ...) \
     do \
     { \
