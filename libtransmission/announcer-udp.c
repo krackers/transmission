@@ -507,10 +507,10 @@ static void tau_tracker_on_dns(int errcode, struct evutil_addrinfo* addr, void* 
     struct tau_tracker* tracker = vtracker;
 
     tracker->dns_request = NULL;
-    tracker->addr_expiration_time = tr_time() + 60 * 60; /* one hour */
 
     if (errcode != 0)
     {
+        tracker->addr_expiration_time = tr_time() + 60 * 2; /* 2 minutes */
         char* errmsg = tr_strdup_printf(_("DNS Lookup failed: %s"), evutil_gai_strerror(errcode));
         dbgmsg(tracker->key, "%s", errmsg);
         tau_tracker_fail_all(tracker, false, false, errmsg);
@@ -518,6 +518,7 @@ static void tau_tracker_on_dns(int errcode, struct evutil_addrinfo* addr, void* 
     }
     else
     {
+        tracker->addr_expiration_time = tr_time() + 60 * 60; /* one hour */
         dbgmsg(tracker->key, "DNS lookup succeeded");
         tracker->addr = addr;
         tau_tracker_upkeep(tracker);
