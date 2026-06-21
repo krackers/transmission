@@ -682,19 +682,31 @@ static void tau_tracker_upkeep_ex(struct tau_tracker* tracker, bool timeout_reqs
     time_t const now = tr_time();
     bool const closing = tracker->close_at != 0;
 
-    // If shutting down always free any address info.
-    if (closing && tracker->addr != NULL) {
-        evutil_freeaddrinfo(tracker->addr);
-        tracker->addr = NULL;
+    /* Process timeouts early on so they are never blocked by early returns */
+    if (timeout_reqs)
+    {
+        tau_tracker_timeout_reqs(tracker);
     }
 
-    /* are there any requests pending? */
     if (tau_tracker_is_idle(tracker))
     {
+        /* Safe to clean up addr if shutting down AND no pending requests */
+        if (closing && tracker->addr != NULL) {
+            evutil_freeaddrinfo(tracker->addr);
+            tracker->addr = NULL;
+        }
         return;
     }
 
-    /* update the addr if our lookup is past its shelf date */
+    /* Clean up if closing grace period is over (nothing else can be sent at this point) */
+    if (closing && now >= tracker->close_at && tracker->addr != NULL)
+    {
+        evutil_freeaddrinfo(tracker->addr);
+        tracker->addr = NULL;
+        return;
+    }
+
+    /* Update the addr if our lookup is past its shelf date */
     if (!closing && tracker->dns_request == NULL && tracker->addr_expiration_time <= now)
     {
         if (tracker->addr != NULL) {
@@ -709,35 +721,32 @@ static void tau_tracker_upkeep_ex(struct tau_tracker* tracker, bool timeout_reqs
         hints.ai_socktype = SOCK_DGRAM;
         hints.ai_protocol = IPPROTO_UDP;
         dbgmsg(tracker->host, "Trying a new DNS lookup");
-        tracker->dns_request = evdns_getaddrinfo(tracker->session->evdns_base, tracker->host, NULL, &hints, tau_tracker_on_dns,
-            tracker);
-        return;
+        tracker->dns_request = evdns_getaddrinfo(tracker->session->evdns_base, tracker->host, NULL, &hints, tau_tracker_on_dns, tracker);
+        return; 
     }
 
     dbgmsg(tracker->key, "addr %p -- connected %d (%zu %zu) -- connecting_at %zu", (void*)tracker->addr,
         (int)(tracker->connection_expiration_time > now), (size_t)tracker->connection_expiration_time, (size_t)now,
         (size_t)tracker->connecting_at);
 
-    /* also need a valid connection ID... */
+    /* Request a valid connection ID */
     if (tracker->addr != NULL && tracker->connection_expiration_time <= now && tracker->connecting_at == 0)
     {
         struct evbuffer* buf = evbuffer_new();
         tracker->connecting_at = now;
         tracker->connection_transaction_id = tau_transaction_new();
         dbgmsg(tracker->key, "Trying to connect. Transaction ID is %u", tracker->connection_transaction_id);
+        
+        /* BEP 15 Magic ID */
         evbuffer_add_hton_64(buf, 0x41727101980LL);
         evbuffer_add_hton_32(buf, TAU_ACTION_CONNECT);
         evbuffer_add_hton_32(buf, tracker->connection_transaction_id);
         tau_sendto(tracker->session, tracker->addr, tracker->port, evbuffer_pullup(buf, -1), evbuffer_get_length(buf));
         evbuffer_free(buf);
-        return;
+        return; 
     }
 
-    if (timeout_reqs)
-    {
-        tau_tracker_timeout_reqs(tracker);
-    }
-
+    /* Send pending requests */
     if (tracker->addr != NULL && tracker->connection_expiration_time > now)
     {
         tau_tracker_send_reqs(tracker);
