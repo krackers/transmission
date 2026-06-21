@@ -56,7 +56,7 @@ enum
     NUMWANT = 80,
 
     /* how often to announce & scrape */
-    UPKEEP_INTERVAL_MSEC = 500,
+    UPKEEP_INTERVAL_MSEC = 1000,
     MAX_ANNOUNCES_PER_UPKEEP = 20,
     MAX_SCRAPES_PER_UPKEEP = 20,
 
