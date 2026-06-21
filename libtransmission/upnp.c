@@ -194,6 +194,7 @@ int tr_upnpPulse(tr_upnp* handle, int port, bool isEnabled, bool doPortCheck)
 
         errno = 0;
 
+        FreeUPNPUrls(&handle->urls);
         if (UPNP_GetValidIGD(devlist, &handle->urls, &handle->data, handle->lanaddr,
             sizeof(handle->lanaddr)) == UPNP_IGD_VALID_CONNECTED)
         {
