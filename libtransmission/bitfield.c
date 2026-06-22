@@ -16,8 +16,8 @@
 /* Portability macros for hardware population count */
 #if defined(_MSC_VER)
   #include <intrin.h>
-  #define POPCOUNT64 __popcnt64
-  #define POPCOUNT32 __popcnt
+  #define POPCOUNT64(x) (__popcnt64(((uint64_t)(x))))
+  #define POPCOUNT32(x) (__popcnt(((uint32_t)(x) & 0xFFFFFFFFU)))
   
   /* POPCNT was introduced in SSE4.2/ABM. Checking for __AVX__ 
      is a safe baseline to guarantee modern hardware instruction generation. */
@@ -31,9 +31,17 @@
     #error "Hardware POPCNT is not enabled! Compile with -mpopcnt or -march=x86-64-v2 to prevent severe performance regressions."
   #endif
   
-  #define POPCOUNT64 __builtin_popcountll
-  #define POPCOUNT32 __builtin_popcount
+  #define POPCOUNT64(x) (__builtin_popcountll(((uint64_t)(x))))
+  #define POPCOUNT32(x) (__builtin_popcount(((uint32_t)(x) & 0xFFFFFFFFU)))
 #endif
+
+/* 
+ * Handles 8-bit popcounts by forcing a zero-extended 32-bit promotion.
+ * Followed by masking to ensure that upper bits are properly cleared.
+ * Avoids any possible compiler optimizations that would skip the zero-extension.
+ */
+#define POPCOUNT8(x) (POPCOUNT32(((uint32_t)(x) & 0xFFU)))
+
 tr_bitfield const TR_BITFIELD_INIT =
 {
     .bits = NULL,
@@ -94,7 +102,7 @@ static size_t countArray(tr_bitfield const* b)
     uint8_t const* tail = data + (num_words * 8);
     for (size_t j = 0; j < tail_bytes; ++j)
     {
-        ret0 += POPCOUNT32(tail[j]);
+        ret0 += POPCOUNT8(tail[j]);
     }
 
     return ret0 + ret1;
@@ -106,15 +114,8 @@ static size_t countRange(tr_bitfield const* b, size_t begin, size_t end)
     size_t const first_byte = begin >> 3U;
     size_t const last_byte = (end - 1) >> 3U;
 
-    if (b->bit_count == 0)
-    {
-        return 0;
-    }
-
-    if (first_byte >= b->alloc_count)
-    {
-        return 0;
-    }
+    if (b->bit_count == 0) return 0;
+    if (first_byte >= b->alloc_count) return 0;
 
     TR_ASSERT(begin < end);
     TR_ASSERT(b->bits != NULL);
@@ -129,7 +130,7 @@ static size_t countRange(tr_bitfield const* b, size_t begin, size_t end)
         val &= (0xFF >> left_shift);
         val &= (0xFF << right_shift);
 
-        ret += POPCOUNT32(val);
+        ret += POPCOUNT8(val);
     }
     else
     {
@@ -140,7 +141,7 @@ static size_t countRange(tr_bitfield const* b, size_t begin, size_t end)
         size_t const first_shift = begin - (first_byte * 8);
         val = b->bits[first_byte];
         val &= (0xFF >> first_shift);
-        ret += POPCOUNT32(val);
+        ret += POPCOUNT8(val);
 
         /* middle bytes - Optimized chunking, memcpy guarantees alignment */
         size_t i = first_byte + 1;
@@ -155,7 +156,7 @@ static size_t countRange(tr_bitfield const* b, size_t begin, size_t end)
         /* remaining middle tail bytes */
         while (i < walk_end)
         {
-            ret += POPCOUNT32(b->bits[i++]);
+            ret += POPCOUNT8(b->bits[i++]);
         }
 
         /* last byte */
@@ -164,7 +165,7 @@ static size_t countRange(tr_bitfield const* b, size_t begin, size_t end)
             size_t const last_shift = (last_byte + 1) * 8 - end;
             val = b->bits[last_byte];
             val &= (0xFF << last_shift);
-            ret += POPCOUNT32(val);
+            ret += POPCOUNT8(val);
         }
     }
 
@@ -462,7 +463,7 @@ void tr_bitfieldSetFromFlags(tr_bitfield* b, bool const* flags, size_t n)
                              (!!flags[i + 7] << 0);
 
         b->bits[i >> 3U] = byte;
-        trueCount += POPCOUNT32(byte);
+        trueCount += POPCOUNT8(byte);
     }
 
     /* Process remaining tail bits */
@@ -494,16 +495,9 @@ void tr_bitfieldAdd(tr_bitfield* b, size_t nth)
 /* Sets bit range [begin, end) to 1 */
 void tr_bitfieldAddRange(tr_bitfield* b, size_t begin, size_t end)
 {
-    if (begin >= end || end - 1 >= b->bit_count)
-    {
-        return;
-    }
+    if (begin >= end || end - 1 >= b->bit_count) return;
     if (tr_bitfieldHasAll(b)) return;
-
-    if (!tr_bitfieldEnsureNthBitAlloced(b, end - 1))
-    {
-        return;
-    }
+    if (!tr_bitfieldEnsureNthBitAlloced(b, end - 1)) return;
 
     size_t diff = 0;
     size_t const first_byte = begin >> 3U;
@@ -521,15 +515,15 @@ void tr_bitfieldAddRange(tr_bitfield* b, size_t begin, size_t end)
         uint8_t const orig = b->bits[first_byte];
         
         /* ~orig flips 0s to 1s. ANDing with mask isolates the target range.
-           POPCOUNT then tells us exactly how many 0s are about to become 1s. */
-        diff += POPCOUNT32(~orig & mask);
+           POPCOUNT8 safely avoids the 32-bit signed promotion trap of ~. */
+        diff += POPCOUNT8(~orig & mask);
         b->bits[first_byte] = orig | mask;
     }
     else
     {
         /* --- First Byte --- */
         uint8_t const orig_first = b->bits[first_byte];
-        diff += POPCOUNT32(~orig_first & sm);
+        diff += POPCOUNT8(~orig_first & sm);
         b->bits[first_byte] = orig_first | sm;
 
         /* --- Middle Bytes (Optimized 64-bit Chunks) --- */
@@ -540,7 +534,7 @@ void tr_bitfieldAddRange(tr_bitfield* b, size_t begin, size_t end)
             memcpy(&word, b->bits + i, sizeof(word));
             
             diff += POPCOUNT64(~word);     /* Count missing 1s */
-            memset(b->bits + i, 0xFF, 8);  /* Write all 1s (compiles to a single 64-bit store) */
+            memset(b->bits + i, 0xFF, 8);  /* Write all 1s */
             
             i += 8;
         }
@@ -549,14 +543,14 @@ void tr_bitfieldAddRange(tr_bitfield* b, size_t begin, size_t end)
         while (i < last_byte)
         {
             uint8_t const orig = b->bits[i];
-            diff += POPCOUNT32((uint8_t)~orig);
+            diff += POPCOUNT8(~orig);
             b->bits[i] = 0xFF;
             i++;
         }
 
         /* --- Last Byte --- */
         uint8_t const orig_last = b->bits[last_byte];
-        diff += POPCOUNT32(~orig_last & em);
+        diff += POPCOUNT8(~orig_last & em);
         b->bits[last_byte] = orig_last | em;
     }
 
@@ -581,16 +575,9 @@ void tr_bitfieldRem(tr_bitfield* b, size_t nth)
 /* Clears bit range [begin, end) to 0 */
 void tr_bitfieldRemRange(tr_bitfield* b, size_t begin, size_t end)
 {
-    if (begin >= end || end - 1 >= b->bit_count)
-    {
-        return;
-    }
+    if (begin >= end || end - 1 >= b->bit_count) return;
     if (tr_bitfieldHasNone(b)) return;
-
-    if (!tr_bitfieldEnsureNthBitAlloced(b, end - 1))
-    {
-        return;
-    }
+    if (!tr_bitfieldEnsureNthBitAlloced(b, end - 1)) return;
 
     size_t diff = 0;
     size_t const first_byte = begin >> 3U;
@@ -607,16 +594,14 @@ void tr_bitfieldRemRange(tr_bitfield* b, size_t begin, size_t end)
         uint8_t const clear_mask = ~keep_mask;
         uint8_t const orig = b->bits[first_byte];
         
-        /* ANDing with clear_mask isolates the bits about to be zeroed.
-           POPCOUNT tells us how many 1s are about to become 0s. */
-        diff += POPCOUNT32(orig & clear_mask);
+        diff += POPCOUNT8(orig & clear_mask);
         b->bits[first_byte] = orig & keep_mask;
     }
     else
     {
         /* --- First Byte --- */
         uint8_t const orig_first = b->bits[first_byte];
-        diff += POPCOUNT32(orig_first & ~sm);
+        diff += POPCOUNT8(orig_first & ~sm);
         b->bits[first_byte] = orig_first & sm;
 
         /* --- Middle Bytes (Optimized 64-bit Chunks) --- */
@@ -627,7 +612,7 @@ void tr_bitfieldRemRange(tr_bitfield* b, size_t begin, size_t end)
             memcpy(&word, b->bits + i, sizeof(word));
             
             diff += POPCOUNT64(word);    /* Count existing 1s */
-            memset(b->bits + i, 0x00, 8);/* Write all 0s (compiles to a single 64-bit store) */
+            memset(b->bits + i, 0x00, 8);/* Write all 0s */
             
             i += 8;
         }
@@ -635,14 +620,14 @@ void tr_bitfieldRemRange(tr_bitfield* b, size_t begin, size_t end)
         /* --- Middle Bytes (Tail) --- */
         while (i < last_byte)
         {
-            diff += POPCOUNT32(b->bits[i]);
+            diff += POPCOUNT8(b->bits[i]);
             b->bits[i] = 0x00;
             i++;
         }
 
         /* --- Last Byte --- */
         uint8_t const orig_last = b->bits[last_byte];
-        diff += POPCOUNT32(orig_last & ~em);
+        diff += POPCOUNT8(orig_last & ~em);
         b->bits[last_byte] = orig_last & em;
     }
 
