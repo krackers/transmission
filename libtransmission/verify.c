@@ -29,12 +29,19 @@
 ****
 ***/
 
-static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleep_msec)
+static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleepMsec)
 {
     time_t end;
     tr_sha1_ctx_t sha;
     tr_sys_file_t fd = TR_BAD_SYS_FILE;
     uint64_t filePos = 0;
+    uint64_t totalBytesRead = 0;
+
+    uint64_t pieceStartTime = 0;
+    bool pieceHadRealIO = false;
+    uint64_t totalPieceVerifyTimeMs = 0;
+    uint32_t existingPiecesVerified = 0;
+
     bool changed = false;
     bool hadPiece = false;
     time_t lastSleptAt = 0;
@@ -63,6 +70,9 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleep_msec)
         if (piecePos == 0)
         {
             hadPiece = tr_torrentPieceIsComplete(tor, pieceIndex);
+
+            pieceStartTime = tr_time_msec();
+            pieceHadRealIO = false;
         }
 
         /* if we're starting a new file... */
@@ -91,6 +101,8 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleep_msec)
                 bytesThisPass = numRead;
                 tr_sha1_update(sha, buffer, bytesThisPass);
                 tr_sys_file_advise(fd, filePos, bytesThisPass, TR_SYS_FILE_ADVICE_DONT_NEED, NULL);
+                totalBytesRead += bytesThisPass;
+                pieceHadRealIO = true;
             }
         }
 
@@ -107,6 +119,13 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleep_msec)
             bool hasPiece;
             uint8_t hash[SHA_DIGEST_LENGTH];
 
+            uint64_t const pieceEndTime = tr_time_msec();
+            if (pieceHadRealIO)
+            {
+                totalPieceVerifyTimeMs += (pieceEndTime - pieceStartTime);
+                existingPiecesVerified++;
+            }
+
             tr_sha1_final(sha, hash);
             hasPiece = memcmp(hash, tor->info.pieces[pieceIndex].hash, SHA_DIGEST_LENGTH) == 0;
 
@@ -118,13 +137,17 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleep_msec)
 
             tr_torrentSetPieceChecked(tor, pieceIndex);
             now = tr_time();
+            if (changed) {
+                tr_logAddTorInfo(tor, "Torrent piece #%d failed verification (%d seconds). Had %d, now %d",
+                    pieceIndex, (int)(now - begin), hadPiece, hasPiece);
+            }
             tor->anyDate = now;
 
             /* Dynamically sleep based on OS capability */
-            if (sleep_msec > 0 && lastSleptAt != now)
+            if (sleepMsec > 0 && lastSleptAt != now)
             {
                 lastSleptAt = now;
-                tr_wait_msec(sleep_msec);
+                tr_wait_msec(sleepMsec);
             }
 
             sha = tr_sha1_init();
@@ -157,9 +180,12 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleep_msec)
 
     /* stopwatch */
     end = tr_time();
-    tr_logAddTorDbg(tor, "Verification is done. It took %d seconds to verify %" PRIu64 " bytes (%" PRIu64 " bytes per second)",
-        (int)(end - begin), tor->info.totalSize, (uint64_t)(tor->info.totalSize / (1 + (end - begin))));
 
+    double avgPieceTimeMs = existingPiecesVerified > 0 ? (double)totalPieceVerifyTimeMs / existingPiecesVerified : 0.0;
+
+    tr_logAddTorInfo(tor, "Verification finished. Status %d. Read %" PRIu64 " bytes in %d sec (%" PRIu64 " B/s).",
+        changed, totalBytesRead, (int)(end - begin), (uint64_t)(totalBytesRead / (0.5 + (end - begin))));
+    tr_logAddTorDbg(tor, "Avg real piece IO time: %.2f ms (across %" PRIu32 " read pieces).", avgPieceTimeMs, existingPiecesVerified);
     return changed;
 }
 
