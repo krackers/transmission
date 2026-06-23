@@ -34,7 +34,7 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleepMsec)
     time_t end;
     tr_sha1_ctx_t sha;
     tr_sys_file_t fd = TR_BAD_SYS_FILE;
-    uint64_t filePos = 0;
+    uint64_t filePos = 0; // read head for current file
     uint64_t totalBytesRead = 0;
 
     uint64_t pieceStartTime = 0;
@@ -45,13 +45,18 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleepMsec)
     bool changed = false;
     bool hadPiece = false;
     time_t lastSleptAt = 0;
-    uint32_t piecePos = 0;
+    uint32_t piecePos = 0; // tracks bytes into the current piece, for hasher
     tr_file_index_t fileIndex = 0;
     tr_file_index_t prevFileIndex = !fileIndex;
     tr_piece_index_t pieceIndex = 0;
     time_t const begin = tr_time();
 
     size_t const buflen = 1024 * 1024;  // 1MB buffer
+    /* Track read bytes to advise the OS in batches (after each piece or new file)
+       instead of per-chunk. Note that pieces can span files */
+    uint64_t pieceStartInFile = 0; // cur piece begin byte offset within the current file
+    uint64_t pieceLengthInFile = 0; // cur piece length within the current file
+
     uint8_t* buffer = tr_valloc(buflen);
 
     sha = tr_sha1_init();
@@ -83,6 +88,10 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleepMsec)
                 NULL);
             tr_free(filename);
             prevFileIndex = fileIndex;
+
+            /* Reset trackers for the new file descriptor */
+            pieceStartInFile = 0;
+            pieceLengthInFile = 0;
         }
 
         /* figure out how much we can read this pass */
@@ -100,7 +109,8 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleepMsec)
             {
                 bytesThisPass = numRead;
                 tr_sha1_update(sha, buffer, bytesThisPass);
-                tr_sys_file_advise(fd, filePos, bytesThisPass, TR_SYS_FILE_ADVICE_DONT_NEED, NULL);
+
+                pieceLengthInFile += bytesThisPass;
                 totalBytesRead += bytesThisPass;
                 pieceHadRealIO = true;
             }
@@ -111,6 +121,17 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleepMsec)
         leftInFile -= bytesThisPass;
         piecePos += bytesThisPass;
         filePos += bytesThisPass;
+
+        /* If we are at a piece boundary OR a file boundary */
+        if (pieceLengthInFile > 0 && (leftInPiece == 0 || leftInFile == 0))
+        {
+            if (fd != TR_BAD_SYS_FILE)
+            {
+                tr_sys_file_advise(fd, pieceStartInFile, pieceLengthInFile, TR_SYS_FILE_ADVICE_DONT_NEED, NULL);
+            }
+            pieceStartInFile += pieceLengthInFile;
+            pieceLengthInFile = 0;
+        }
 
         /* if we're finishing a piece... */
         if (leftInPiece == 0)
