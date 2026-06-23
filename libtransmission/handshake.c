@@ -27,11 +27,11 @@
 #include "utils.h"
 
 /* enable LibTransmission extension protocol */
-#define ENABLE_LTEP * /
+#define ENABLE_LTEP
 /* fast extensions */
-#define ENABLE_FAST * /
+#define ENABLE_FAST
 /* DHT */
-#define ENABLE_DHT * /
+#define ENABLE_DHT
 
 /***
 ****
