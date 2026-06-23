@@ -314,6 +314,11 @@ const NSString* kTemplateIcons[] = {
         tr_variantDictAddInt(&settings, TR_KEY_peer_limit_global, [fDefaults integerForKey: @"PeersTotal"]);
         tr_variantDictAddInt(&settings, TR_KEY_peer_limit_per_torrent, [fDefaults integerForKey: @"PeersTorrent"]);
 
+        // OSX (on HFS+) does not support sparse preallocation, so the sparse codepath just
+        // does a seek + write which is more fragmented than just doing F_PREALLOCATE.
+        // APFS supports sparse files, so if really needed we can make this customizable.
+        tr_variantDictAddInt(&settings, TR_KEY_preallocation, TR_PREALLOCATE_FULL);
+
         const BOOL randomPort = [fDefaults boolForKey: @"RandomPort"];
         tr_variantDictAddBool(&settings, TR_KEY_peer_port_random_on_start, randomPort);
         if (!randomPort)
