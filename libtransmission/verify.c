@@ -9,6 +9,10 @@
 #include <string.h> /* memcmp() */
 #include <stdlib.h> /* free() */
 
+#ifdef __APPLE__
+#include <sys/resource.h> /* setiopolicy_np() */
+#endif
+
 #include "transmission.h"
 #include "completion.h"
 #include "crypto-utils.h"
@@ -25,12 +29,7 @@
 ****
 ***/
 
-enum
-{
-    MSEC_TO_SLEEP_PER_SECOND_DURING_VERIFY = 100
-};
-
-static bool verifyTorrent(tr_torrent* tor, bool* stopFlag)
+static bool verifyTorrent(tr_torrent* tor, bool* stopFlag, int sleep_msec)
 {
     time_t end;
     tr_sha1_ctx_t sha;
@@ -44,7 +43,8 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag)
     tr_file_index_t prevFileIndex = !fileIndex;
     tr_piece_index_t pieceIndex = 0;
     time_t const begin = tr_time();
-    size_t const buflen = 1024 * 128; /* 128 KiB buffer */
+
+    size_t const buflen = 1024 * 1024;  // 1MB buffer
     uint8_t* buffer = tr_valloc(buflen);
 
     sha = tr_sha1_init();
@@ -120,12 +120,11 @@ static bool verifyTorrent(tr_torrent* tor, bool* stopFlag)
             now = tr_time();
             tor->anyDate = now;
 
-            /* sleeping even just a few msec per second goes a long
-             * way towards reducing IO load... */
-            if (lastSleptAt != now)
+            /* Dynamically sleep based on OS capability */
+            if (sleep_msec > 0 && lastSleptAt != now)
             {
                 lastSleptAt = now;
-                tr_wait_msec(MSEC_TO_SLEEP_PER_SECOND_DURING_VERIFY);
+                tr_wait_msec(sleep_msec);
             }
 
             sha = tr_sha1_init();
@@ -195,6 +194,17 @@ static tr_lock* getVerifyLock(void)
 
 static void verifyThreadFunc(void* unused UNUSED)
 {
+    int sleep_msec = 80; /* Generic default */
+
+#ifdef __APPLE__
+    /* Let macOS aggressively throttle this thread when other apps need the disk */
+    if (setiopolicy_np(IOPOL_TYPE_DISK, IOPOL_SCOPE_THREAD, IOPOL_THROTTLE) == 0)
+    {
+        /* Policy succeeded, safe to use lower sleep duration mainly to reduce CPU */
+        sleep_msec = 15;
+    }
+#endif
+
     for (;;)
     {
         bool changed = false;
@@ -219,7 +229,9 @@ static void verifyThreadFunc(void* unused UNUSED)
 
         tr_logAddTorInfo(tor, "%s", _("Verifying torrent"));
         tr_torrentSetVerifyState(tor, TR_VERIFY_NOW);
-        changed = verifyTorrent(tor, &stopCurrent);
+        
+        changed = verifyTorrent(tor, &stopCurrent, sleep_msec);
+
         tr_torrentSetVerifyState(tor, TR_VERIFY_NONE);
         TR_ASSERT(tr_isTorrent(tor));
 
