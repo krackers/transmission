@@ -284,6 +284,10 @@ msgstr "Прекратить раздачу при простое n-минут:"
 msgid "Speed"
 msgstr "Скорость"
 
+#: ../gtk/details.c
+msgid "Sequential download"
+msgstr "Последовательная загрузка"
+
 #: ../gtk/details.c:519
 msgid "Honor global _limits"
 msgstr "Учитывать глобальные о_граничения"

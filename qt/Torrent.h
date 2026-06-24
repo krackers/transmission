@@ -168,6 +168,7 @@ public:
         DOWN_LIMITED,
         UP_LIMIT,
         UP_LIMITED,
+        SEQUENTIAL_DOWNLOAD,
         HONORS_SESSION_LIMITS,
         PEER_LIMIT,
         HASH_STRING,
@@ -295,6 +296,11 @@ public:
     bool hasMetadata() const
     {
         return getDouble(METADATA_PERCENT_DONE) >= 1.0;
+    }
+
+    bool sequentialDownload() const
+    {
+        return getBool(SEQUENTIAL_DOWNLOAD);
     }
 
     int pieceCount() const
