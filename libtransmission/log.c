@@ -248,7 +248,8 @@ void tr_logAddMessage(char const* file, int line, tr_log_level level, char const
 
     if (!tr_str_is_empty(buf))
     {
-        if (tr_logGetQueueEnabled())
+        bool logQueue = tr_logGetQueueEnabled();
+        if (logQueue)
         {
             tr_log_message* newmsg;
             newmsg = tr_new0(tr_log_message, 1);
@@ -273,7 +274,8 @@ void tr_logAddMessage(char const* file, int line, tr_log_level level, char const
                 TR_ASSERT(myQueueLength == TR_LOG_MAX_QUEUE_LENGTH);
             }
         }
-        else
+
+        if (!logQueue || tr_logGetDeepEnabled())
         {
             tr_sys_file_t fp;
             char timestr[64];
