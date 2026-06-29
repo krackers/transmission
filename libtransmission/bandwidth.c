@@ -304,40 +304,10 @@ static unsigned int bandwidthClamp(tr_bandwidth const* b, uint64_t now, tr_direc
 
     if (b != NULL)
     {
+        /* printf("bandwidthClamp: is limited %d, bytes left %d\n", b->band[dir].isLimited, b->band[dir].bytesLeft); */
         if (b->band[dir].isLimited)
         {
             byteCount = MIN(byteCount, b->band[dir].bytesLeft);
-
-            /* if we're getting close to exceeding the speed limit,
-             * clamp down harder on the bytes available */
-            if (byteCount > 0)
-            {
-                double current;
-                double desired;
-                double r;
-
-                if (now == 0)
-                {
-                    now = tr_time_msec();
-                }
-
-                current = tr_bandwidthGetRawSpeed_Bps(b, now, TR_DOWN);
-                desired = tr_bandwidthGetDesiredSpeed_Bps(b, TR_DOWN);
-                r = desired >= 1 ? current / desired : 0;
-
-                if (r > 1.0)
-                {
-                    byteCount = 0;
-                }
-                else if (r > 0.9)
-                {
-                    byteCount *= 0.8;
-                }
-                else if (r > 0.8)
-                {
-                    byteCount *= 0.9;
-                }
-            }
         }
 
         if (b->parent != NULL && b->band[dir].honorParentLimits && byteCount > 0)
