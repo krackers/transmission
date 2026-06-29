@@ -1230,7 +1230,9 @@ tr_handshake* tr_handshakeNew(tr_peerIo* io, tr_encryption_mode encryptionMode, 
     tr_peerIoSetIOFuncs(handshake->io, canRead, NULL, gotError, handshake);
     tr_peerIoSetEncryption(io, PEER_ENCRYPTION_NONE);
 
-    dbgmsg(handshake, "New %s handshake requested.", io->socket.type == TR_PEER_SOCKET_TYPE_UTP ? "utp" : "tcp");
+    dbgmsg(handshake, "%s %s handshake requested.",
+        tr_peerIoIsIncoming(handshake->io) ? "Incoming" : "Outgoing",
+        io->socket.type == TR_PEER_SOCKET_TYPE_UTP ? "utp" : "tcp");
 
     if (tr_peerIoIsIncoming(handshake->io))
     {
