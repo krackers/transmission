@@ -22,7 +22,7 @@
 
 #import "PortChecker.h"
 
-#define CHECKER_URL(port) [NSString stringWithFormat: @"https://portcheck.transmissionbt.com/%ld", port]
+#define CHECKER_URL(port) [NSString stringWithFormat: @"https4://portcheck.transmissionbt.com/%ld", port]
 #define CHECK_FIRE 3.0
 
 @interface PortChecker (Private)
@@ -87,7 +87,9 @@
 
 - (void) connectionDidFinishLoading: (NSURLConnection *) connection
 {
+    
     NSString * probeString = [[NSString alloc] initWithData: fPortProbeData encoding: NSUTF8StringEncoding];
+    
     fPortProbeData = nil;
 
     if (probeString)
@@ -117,8 +119,9 @@
 {
     fTimer = nil;
 
-    NSURLRequest * portProbeRequest = [NSURLRequest requestWithURL: [NSURL URLWithString: CHECKER_URL([[timer userInfo] integerValue])]
-                                        cachePolicy: NSURLRequestReloadIgnoringLocalAndRemoteCacheData timeoutInterval: 15.0];
+    NSMutableURLRequest * portProbeRequest = [NSMutableURLRequest requestWithURL: [NSURL URLWithString: CHECKER_URL([[timer userInfo] integerValue])]
+                                        cachePolicy: NSURLRequestReloadIgnoringLocalCacheData timeoutInterval: 15.0];
+    [portProbeRequest setValue:@"no-cache" forHTTPHeaderField:@"Cache-Control"];
 
     if ((fConnection = [[NSURLConnection alloc] initWithRequest: portProbeRequest delegate: self]))
         fPortProbeData = [[NSMutableData alloc] init];
