@@ -2116,6 +2116,7 @@ static bool myHandshakeDoneCB(tr_handshake* handshake, tr_peerIo* io, bool readA
     io = tr_handshakeStealIO(handshake); /* this steals its refcount too, which is balanced by our unref in peerDelete() */
     tr_peerIoSetParent(io, &s->tor->bandwidth);
     createBitTorrentPeer(s->tor, io, atom, client);
+    io->handshakeFinished = true;
 
     success = true;
 done:

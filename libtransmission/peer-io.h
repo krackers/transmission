@@ -59,13 +59,14 @@ typedef void (* tr_net_error_cb)(struct tr_peerIo* io, short what, void* userDat
 
 typedef struct tr_peerIo
 {
-    bool isEncrypted;
     bool isIncoming;
     bool peerIdIsSet;
     bool extendedProtocolSupported;
     bool fastExtensionSupported;
     bool dhtSupported;
     bool utpSupported;
+    
+    bool handshakeFinished;
 
     tr_priority_t priority;
 
