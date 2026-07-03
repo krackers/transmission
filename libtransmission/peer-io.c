@@ -1144,7 +1144,7 @@ static void addDatatype(tr_peerIo* io, size_t byteCount, bool isPieceData)
 
 static inline void maybeEncryptBuffer(tr_peerIo* io, struct evbuffer* buf, size_t offset, size_t size)
 {
-    CHECK(io->encryption_type > 0);
+    TR_ASSERT(io->encryption_type > 0);
     if (io->encryption_type == PEER_ENCRYPTION_RC4)
     {
         processBuffer(&io->crypto, buf, offset, size, &tr_cryptoEncrypt);
@@ -1166,7 +1166,7 @@ void tr_peerIoWriteBytes(tr_peerIo* io, void const* bytes, size_t byteCount, boo
 
     iovec.iov_len = byteCount;
 
-    CHECK(io->encryption_type > 0);
+    TR_ASSERT(io->encryption_type > 0);
     if (io->encryption_type == PEER_ENCRYPTION_RC4)
     {
         tr_cryptoEncrypt(&io->crypto, iovec.iov_len, bytes, iovec.iov_base);
@@ -1214,7 +1214,7 @@ void evbuffer_add_uint64(struct evbuffer* outbuf, uint64_t addme_hll)
 
 static inline void maybeDecryptBuffer(tr_peerIo* io, struct evbuffer* buf, size_t offset, size_t size)
 {
-    CHECK(io->encryption_type > 0);
+    TR_ASSERT(io->encryption_type > 0);
     if (io->encryption_type == PEER_ENCRYPTION_RC4)
     {
         processBuffer(&io->crypto, buf, offset, size, &tr_cryptoDecrypt);

@@ -129,7 +129,7 @@ void tr_cryptoDecryptInit(tr_crypto* crypto)
 
 void tr_cryptoDecrypt(tr_crypto* crypto, size_t buf_len, void const* buf_in, void* buf_out)
 {
-    CHECK(crypto->dec_key != NULL);
+    TR_ASSERT(crypto->dec_key != NULL);
     tr_rc4_process(crypto->dec_key, buf_in, buf_out, buf_len);
 }
 
@@ -144,7 +144,7 @@ void tr_cryptoEncryptInit(tr_crypto* crypto)
 
 void tr_cryptoEncrypt(tr_crypto* crypto, size_t buf_len, void const* buf_in, void* buf_out)
 {
-    CHECK(crypto->enc_key != NULL);
+    TR_ASSERT(crypto->enc_key != NULL);
     tr_rc4_process(crypto->enc_key, buf_in, buf_out, buf_len);
 }
 
