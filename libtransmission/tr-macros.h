@@ -75,6 +75,17 @@
 #define TR_UNLIKELY(x) (x)
 #endif
 
+#if defined(__clang__) || defined(__GNUC__)
+    #define TR_FORCE_INLINE inline __attribute__((always_inline))
+    #define TR_NOINLINE     __attribute__((noinline))
+#elif defined(_MSC_VER)
+    #define TR_FORCE_INLINE __forceinline
+    #define TR_NOINLINE     __declspec(noinline)
+#else
+    #define TR_FORCE_INLINE inline
+    #define TR_NOINLINE
+#endif
+
 /***
 ****
 ***/
