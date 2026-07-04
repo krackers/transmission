@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdatomic.h>
+#include "log.h"
 #include "tr-macros.h"
 
 #ifdef _MSC_VER
@@ -24,8 +25,13 @@
 #define CPUID_POPCNT_MASK_ECX (1 << 23)
 #define CPUID_QUERY_FEATURES_EAX 1
 
-/* 0: unchecked, 1: fallback, 2: hardware supported */
-static _Atomic int g_popcnt_state = 0; 
+enum {
+    UNKNOWN_POPCNT = 0,
+    NO_POPCNT = 1,
+    HAS_POPCNT = 2
+};
+
+static _Atomic int g_popcnt_state = UNKNOWN_POPCNT; 
 
 static inline void run_cpuid(int eax, int ecx, int* abcd)
 {
@@ -49,7 +55,7 @@ static TR_NOINLINE int tr_system_init_popcnt(void)
     int abcd[4] = {0, 0, 0, 0};
     run_cpuid(CPUID_QUERY_FEATURES_EAX, 0, abcd);
     
-    int s = ((abcd[2] & CPUID_POPCNT_MASK_ECX) != 0) ? 2 : 1;
+    int s = ((abcd[2] & CPUID_POPCNT_MASK_ECX) != 0) ? HAS_POPCNT : NO_POPCNT;
     atomic_store_explicit(&g_popcnt_state, s, memory_order_relaxed);
     
     return s;
@@ -60,12 +66,13 @@ static TR_FORCE_INLINE bool tr_system_has_popcnt(void)
     int s = atomic_load_explicit(&g_popcnt_state, memory_order_relaxed);
     
     /* Initialization happens only once, hint as unlikely. Race/double initialization is fine */
-    if (TR_UNLIKELY(s == 0))
+    if (TR_UNLIKELY(s == UNKNOWN_POPCNT))
     {
         s = tr_system_init_popcnt();
+        tr_logAddDeepNamed("popcnt", "Popcnt feature state %d", s);
     }
     
-    return s == 2;
+    return s == HAS_POPCNT;
 }
 
 static TR_FORCE_INLINE uint64_t popcnt64_hw(uint64_t x)
