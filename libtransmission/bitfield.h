@@ -17,15 +17,29 @@
 /** @brief Implementation of the BitTorrent spec's Bitfield array of bits */
 typedef struct tr_bitfield
 {
+    /* Raw storage for bitvector, packed into bytes */
     uint8_t* bits;
+
+    /* Number of bytes allocated for the tracked bits
+       May be 0 if all-empty/full optimization.*/
     size_t alloc_count;
 
+    /* Total number of tracked bits (length of bit vector)
+       This may be 0 in the case of "unknown length" bitfields
+       where bounds checking becomes disabled and the bitfield
+       grows to any `n` you set in add/rem. It is forbidden
+       to call GetRaw in such a case, since the actual length
+       is semantically unknown. */
     size_t bit_count;
 
+    /* Nnumber of bits set to 1 */
     size_t true_count;
 
     /* Special cases for when full or empty but we don't know the bitCount.
-       This occurs when a magnet link's peers send have all / have none */
+       This occurs when a magnet link's peers send have all / have none. 
+       These hints are only used to provide semantic meaning to
+       zero-length (bit_count == 0) bitfields. They are ignored
+       when bit_count > 0. */
     bool have_all_hint;
     bool have_none_hint;
 }
@@ -39,12 +53,32 @@ void tr_bitfieldSetHasAll(tr_bitfield*);
 
 void tr_bitfieldSetHasNone(tr_bitfield*);
 
-void tr_bitfieldAdd(tr_bitfield*, size_t bit);
+/**
+ Set the nth bit, if not already set. 
+ Note that calling this with n >= b->bit_count will cause
+ the underlying array to be expanded, without updating the tracked bit_count.
+ It is up to caller to prevent this undefined behavior.
+*/
+void tr_bitfieldAdd(tr_bitfield*, size_t n);
 
-void tr_bitfieldRem(tr_bitfield*, size_t bit);
+/**
+ Clear the nth bit, if not already empty. 
+ Note that calling this with n >= b->bit_count will cause
+ the underlying array to be expanded, without updating the tracked bit_count.
+ It is up to caller to prevent this undefined behavior.
+*/
+void tr_bitfieldRem(tr_bitfield*, size_t n);
 
+/**
+ Sets bit range [begin, end) to 1.
+ Calling this with end out of range or begin >= end is a noop.
+*/
 void tr_bitfieldAddRange(tr_bitfield*, size_t begin, size_t end);
 
+/**
+ Clears bit range [begin, end) to 0
+ Calling this with end out of range or begin >= end is a noop.
+*/
 void tr_bitfieldRemRange(tr_bitfield*, size_t begin, size_t end);
 
 /***
@@ -53,6 +87,9 @@ void tr_bitfieldRemRange(tr_bitfield*, size_t begin, size_t end);
 
 extern tr_bitfield const TR_BITFIELD_INIT;
 
+/**
+ Construct a bitfield tracking n bits.
+*/
 void tr_bitfieldConstruct(tr_bitfield*, size_t bit_count);
 
 static inline void tr_bitfieldDestruct(tr_bitfield* b)
@@ -64,18 +101,38 @@ static inline void tr_bitfieldDestruct(tr_bitfield* b)
 ****
 ***/
 
+/**
+ Populate bitfield based on a boolean array, updating set bit count as needed.
+ Note that bitfield must already by constructed to track n bits as bit_count.
+*/
 void tr_bitfieldSetFromFlags(tr_bitfield*, bool const* bytes, size_t n);
 
 void tr_bitfieldSetFromBitfield(tr_bitfield*, tr_bitfield const*);
 
+/**
+ If bounded is true, number of bytes copied is capped by current bit count.
+ Otherwise, all bytes are copied over into the bitfield, with no attempt to
+  keep alloc_bytes in sync with number of tracked bits.
+*/
 void tr_bitfieldSetRaw(tr_bitfield*, void const* bits, size_t byte_count, bool bounded);
 
+/**
+ Create a COPY of the underlying byte array, returning the buffer and
+ size in bytes. This can only be called when the number of tracked bits
+ of the bitfield is known (> 0).
+*/
 void* tr_bitfieldGetRaw(tr_bitfield const* b, size_t* byte_count);
 
 /***
 ****
 ***/
 
+/**
+ Return number of set bits in [begin, end). Calling this with
+ a begin out of range returns 0.
+ Calling this with an end out of range implicitly caps the end
+ to the bit of the last allocated byte.
+*/
 size_t tr_bitfieldCountRange(tr_bitfield const*, size_t begin, size_t end);
 
 size_t tr_bitfieldCountTrueBits(tr_bitfield const* b);

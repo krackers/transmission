@@ -14,24 +14,13 @@
 #include "utils.h" /* tr_new0() */
 #include "popcnt.h"
 
+// See comments in bitfield.h
 tr_bitfield const TR_BITFIELD_INIT =
 {
     .bits = NULL,
-    // Number of bytes allocated for the tracked bits
-    // May be 0 if all-empty/full optimization.
     .alloc_count = 0,
-    // Total number of tracked bits (i.e. size of bit vector)
-    // This may be 0 in the case of "unknown length" bitfields
-    // where bounds checking becomes disabled and the bitfield
-    // grows to any `n` you set in add/rem. It is forbidden
-    // to call GetRaw in such a case, since the actual length
-    // is semantically unknown.
     .bit_count = 0,
-    // Nnumber of bits set to 1
     .true_count = 0,
-    // These hints are only used to provide semantic meaning to
-    // zero-length (bit_count == 0) bitfields. They are ignored
-    // when bit_count > 0.
     .have_all_hint = false,
     .have_none_hint = false
 };
@@ -172,9 +161,7 @@ void* tr_bitfieldGetRaw(tr_bitfield const* b, size_t* byte_count)
     if (b->alloc_count != 0)
     {
         TR_ASSERT(b->alloc_count <= n);
-        /* Clamp copy size to prevent heap overflow if alloc_count > n */
-        size_t const copy_size = MIN(b->alloc_count, n);
-        memcpy(bits, b->bits, copy_size);
+        memcpy(bits, b->bits, b->alloc_count);
     }
     else if (tr_bitfieldHasAll(b))
     {
@@ -316,10 +303,6 @@ void tr_bitfieldSetFromBitfield(tr_bitfield* b, tr_bitfield const* src)
     }
 }
 
-/**
-If bounded is true, size of `b` is capped to its current max.
-Otherwise, `b` simply inherits the alloc size of the passed in buffer but
-count of number of tracked bits remains unchanged. */
 void tr_bitfieldSetRaw(tr_bitfield* b, void const* bits, size_t byte_count, bool bounded)
 {
     tr_bitfieldFreeArray(b);
@@ -353,10 +336,6 @@ void tr_bitfieldSetRaw(tr_bitfield* b, void const* bits, size_t byte_count, bool
     tr_bitfieldRebuildTrueCount(b);
 }
 
-/**
-Set raw underlying buffer based on flags, updating set bit count as needed.
-Note that count of # tracked bits is not updated.
- */
 void tr_bitfieldSetFromFlags(tr_bitfield* b, bool const* flags, size_t n)
 {
     tr_bitfieldFreeArray(b);
@@ -402,7 +381,6 @@ void tr_bitfieldAdd(tr_bitfield* b, size_t nth)
     }
 }
 
-/* Sets bit range [begin, end) to 1 */
 void tr_bitfieldAddRange(tr_bitfield* b, size_t begin, size_t end)
 {
     if (begin >= end || end - 1 >= b->bit_count) return;
@@ -469,7 +447,6 @@ void tr_bitfieldRem(tr_bitfield* b, size_t nth)
     }
 }
 
-/* Clears bit range [begin, end) to 0 */
 void tr_bitfieldRemRange(tr_bitfield* b, size_t begin, size_t end)
 {
     if (begin >= end || end - 1 >= b->bit_count) return;
