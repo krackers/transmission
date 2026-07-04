@@ -93,6 +93,12 @@ static size_t countRange(tr_bitfield const* b, size_t begin, size_t end)
 
 size_t tr_bitfieldCountRange(tr_bitfield const* b, size_t begin, size_t end)
 {
+    if (b->bit_count > 0)
+    {
+        begin = MIN(begin, b->bit_count);
+        end = MIN(end, b->bit_count);
+    }
+
     if (begin >= end) return 0;
     if (tr_bitfieldHasAll(b)) return end - begin;
     if (tr_bitfieldHasNone(b)) return 0;
@@ -109,6 +115,12 @@ bool tr_bitfieldHas(tr_bitfield const* b, size_t n)
     return (b->bits[n >> 3U] & (0x80 >> (n & 7U))) != 0;
 }
 
+
+static size_t get_bytes_needed(size_t bit_count)
+{
+    /* Branchless arithmetic replacement for ternary logic */
+    return (bit_count + 7) >> 3;
+}
 
 /***
 ****
@@ -138,6 +150,7 @@ static bool tr_bitfieldIsValid(tr_bitfield const* b)
         }
 
         // The raw math must match
+        // Note: This check can be commented out as can be quite slow.
         TR_ASSERT(b->true_count == countArray(b));
     }
     else 
@@ -168,12 +181,6 @@ size_t tr_bitfieldCountTrueBits(tr_bitfield const* b)
 {
     TR_ASSERT(tr_bitfieldIsValid(b));
     return b->true_count;
-}
-
-static size_t get_bytes_needed(size_t bit_count)
-{
-    /* Branchless arithmetic replacement for ternary logic */
-    return (bit_count + 7) >> 3;
 }
 
 static void set_all_true(uint8_t* array, size_t bit_count)
@@ -211,12 +218,16 @@ void* tr_bitfieldGetRaw(tr_bitfield const* b, size_t* byte_count)
 
 static void tr_bitfieldEnsureBitsAlloced(tr_bitfield* b, size_t n)
 {
+    TR_ASSERT(b->bit_count == 0 || n <= b->bit_count);
     size_t bytes_needed;
     bool const has_all = tr_bitfieldHasAll(b);
 
     if (has_all)
     {
-        bytes_needed = get_bytes_needed(MAX(n, b->true_count));
+        // Allocating an unknown-length have-all bitfield 
+        // is semantically invalid
+        TR_ASSERT(b->bit_count > 0);
+        bytes_needed = get_bytes_needed(b->bit_count);
     }
     else
     {
@@ -231,7 +242,7 @@ static void tr_bitfieldEnsureBitsAlloced(tr_bitfield* b, size_t n)
 
         if (has_all)
         {
-            set_all_true(b->bits, b->true_count);
+            set_all_true(b->bits, b->bit_count);
         }
     }
 }
@@ -276,6 +287,7 @@ static void tr_bitfieldSetTrueCount(tr_bitfield* b, size_t n)
     }
 
     TR_ASSERT(tr_bitfieldIsValid(b));
+    TR_ASSERT(b->bit_count == 0 || b->alloc_count <= get_bytes_needed(b->bit_count));
 }
 
 static void tr_bitfieldRebuildTrueCount(tr_bitfield* b)
@@ -352,7 +364,7 @@ void tr_bitfieldSetFromBitfield(tr_bitfield* b, tr_bitfield const* src)
     }
 }
 
-void tr_bitfieldSetRaw(tr_bitfield* b, void const* bits, size_t byte_count, bool bounded)
+void tr_bitfieldSetRaw(tr_bitfield* b, void const* bytes, size_t byte_count, bool bounded)
 {
     tr_bitfieldFreeArray(b);
     b->true_count = 0;
@@ -362,25 +374,32 @@ void tr_bitfieldSetRaw(tr_bitfield* b, void const* bits, size_t byte_count, bool
         byte_count = MIN(byte_count, get_bytes_needed(b->bit_count));
     }
 
-    b->bits = tr_memdup(bits, byte_count);
+    b->bits = tr_memdup(bytes, byte_count);
     b->alloc_count = byte_count;
 
-    if (bounded)
-    {
-        // ensure the excess bits are set to '0'. Only needed if
-        // we are operating on the final needed byte
-        int const excess_bit_count = (byte_count == get_bytes_needed(b->bit_count)) 
-                                ? (byte_count * 8 - b->bit_count) 
-                                : 0;
+    // Bounded implicitly maintains this, while caller must be careful if bounded=false
+    TR_ASSERT(b->bit_count == 0 || b->alloc_count <= get_bytes_needed(b->bit_count));
 
-        TR_ASSERT(excess_bit_count >= 0);
-        TR_ASSERT(excess_bit_count <= 7);
-
+    // Writing to a final byte that possibly contains trailing padding bits
+    if (b->alloc_count == get_bytes_needed(b->bit_count)) {
+        int const excess_bit_count = (b->alloc_count * 8 - b->bit_count);
+        TR_ASSERT(excess_bit_count >= 0 && excess_bit_count <= 7);
         if (excess_bit_count != 0)
         {
-            b->bits[b->alloc_count - 1] &= 0xFFU << excess_bit_count;
+            if (bounded) {
+                // Ensure excess bits are set to 0
+                b->bits[b->alloc_count - 1] &= 0xFFU << excess_bit_count;
+            } else {
+                // Ensure that trailing bits are already all 0,
+                // as otherwise true_count could exceed tracked bit count.
+                TR_ASSERT((b->bits[b->alloc_count - 1] &
+                    (uint8_t) ~(0xFFU << excess_bit_count)) == 0);
+            }
         }
     }
+
+
+
     b->have_all_hint = false;
     b->have_none_hint = false;
     tr_bitfieldRebuildTrueCount(b);
@@ -388,11 +407,14 @@ void tr_bitfieldSetRaw(tr_bitfield* b, void const* bits, size_t byte_count, bool
 
 void tr_bitfieldSetFromFlags(tr_bitfield* b, bool const* flags, size_t n)
 {
+    TR_ASSERT(b->bit_count == 0 || n <= b->bit_count);
+    // Clearing hints must be done before allocating, as otherwise
+    // the array would get allocated with all bits set.
     tr_bitfieldFreeArray(b);
-    tr_bitfieldEnsureBitsAlloced(b, n);
-
+    b->true_count = 0;
     b->have_all_hint = false;
     b->have_none_hint = false;
+    tr_bitfieldEnsureBitsAlloced(b, n);
     
     size_t i = 0;
     for (; i + 8 <= n; i += 8)
@@ -424,6 +446,8 @@ void tr_bitfieldSetFromFlags(tr_bitfield* b, bool const* flags, size_t n)
 // Up to caller to ensure that nth < b->bit_count
 void tr_bitfieldAdd(tr_bitfield* b, size_t nth)
 {
+    TR_ASSERT(tr_bitfieldIsValid(b));
+    TR_ASSERT(b->bit_count == 0 || nth < b->bit_count);
     if (!tr_bitfieldHas(b, nth) && tr_bitfieldEnsureNthBitAlloced(b, nth))
     {
         size_t const byte_idx = nth >> 3U;
@@ -490,6 +514,8 @@ void tr_bitfieldAddRange(tr_bitfield* b, size_t begin, size_t end)
 void tr_bitfieldRem(tr_bitfield* b, size_t nth)
 {
     TR_ASSERT(tr_bitfieldIsValid(b));
+    TR_ASSERT(b->bit_count == 0 || nth < b->bit_count);
+    TR_ASSERT(b->bit_count >= 0 || !b->have_all_hint);
 
     if (tr_bitfieldHas(b, nth) && tr_bitfieldEnsureNthBitAlloced(b, nth))
     {

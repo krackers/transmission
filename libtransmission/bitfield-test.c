@@ -22,6 +22,7 @@ static int check_true_count_integrity(tr_bitfield const* bf)
         if (tr_bitfieldHas(bf, i)) manual_count++;
     }
     check_int(manual_count, ==, tr_bitfieldCountTrueBits(bf));
+    return 0;
 }
 
 static int test_bitfield_count_range(void)
@@ -202,9 +203,17 @@ static int test_out_of_bounds(void)
     check(!tr_bitfieldHas(&bf, 5000));
     check(!tr_bitfieldHas(&bf, SIZE_MAX));
 
+    // Unknown length bitfield
+    tr_bitfieldDestruct(&bf);
+    tr_bitfieldConstruct(&bf, 0);
+
     /* Adding SIZE_MAX should safely abort inside tr_bitfieldEnsureNthBitAlloced */
     tr_bitfieldAdd(&bf, SIZE_MAX);
     check_int(bf.alloc_count, ==, 0); /* Ensure it didn't try to allocate max memory */
+
+    // Should not trigger oob if undefined length
+    tr_bitfieldAdd(&bf, 500);
+    check(tr_bitfieldHas(&bf, 500));
 
     tr_bitfieldDestruct(&bf);
     return 0;
@@ -766,7 +775,7 @@ static int test_range_all_none_optimizations(void)
     return 0;
 }
 
-static int test_state_mutate_hinted_bitfield(void)
+static int test_state_mutate_hinted_bitfield_unknown_length(void)
 {
     tr_bitfield bf;
     
@@ -794,6 +803,37 @@ static int test_state_mutate_hinted_bitfield(void)
     check_int(tr_bitfieldCountTrueBits(&bf), ==, 0);
     check(tr_bitfieldHasNone(&bf)); 
     check(bf.bits == NULL); /* Verify the array was successfully freed (memory optimization) */
+
+    tr_bitfieldDestruct(&bf);
+    return 0;
+}
+
+static int test_state_mutate_hinted_bitfield_fixed_length(void)
+{
+    tr_bitfield bf;
+    
+    /* Construct as fixed length */
+    tr_bitfieldConstruct(&bf, 5);
+
+    check(!tr_bitfieldHasAll(&bf));
+    check(tr_bitfieldHasNone(&bf));
+
+    /* 3. Add bit (Transitions to dynamic array tracking). 
+     * The HaveNone hint MUST be cleared to avoid "Sticky Flag" */
+    tr_bitfieldAdd(&bf, 0);
+    check(!tr_bitfieldHasNone(&bf)); 
+    check_int(tr_bitfieldCountTrueBits(&bf), ==, 1);
+
+    /* 4. Remove bit (Transitions back to 0). 
+     * SetTrueCount MUST re-compress the state to HaveNone */
+    tr_bitfieldRem(&bf, 0);
+    check_int(tr_bitfieldCountTrueBits(&bf), ==, 0);
+    check(tr_bitfieldHasNone(&bf)); 
+    check(bf.bits == NULL); /* Verify the array was successfully freed (memory optimization) */
+
+    tr_bitfieldAddRange(&bf, 0, 5);
+    check_int(tr_bitfieldCountTrueBits(&bf), ==, 5);
+    check(tr_bitfieldHasAll(&bf)); 
 
     tr_bitfieldDestruct(&bf);
     return 0;
@@ -828,7 +868,7 @@ static int test_bulk_operations_clear_hints(void)
     check(!tr_bitfieldHasNone(&bf));
 
     /* Test 4: SetRaw clears both */
-    tr_bitfieldSetHasNone(&bf);
+    tr_bitfieldSetHasAll(&bf);
     uint8_t raw[1] = { 0xAA }; /* 10101010 */
     tr_bitfieldSetRaw(&bf, raw, 1, true);
     check(!tr_bitfieldHasAll(&bf));
@@ -836,6 +876,46 @@ static int test_bulk_operations_clear_hints(void)
 
     tr_bitfieldDestruct(&bf);
     return 0;
+}
+
+static int test_hint_operations_with_unknown_length(void) {
+    tr_bitfield bf;
+    tr_bitfieldConstruct(&bf, 0);
+    tr_bitfieldSetHasAll(&bf);
+
+    // Rem or RemRange not allowed to be called with HasAll hinted
+
+    // SetFromFlags should reset the hints
+    bool flags[5] = { true, false, true, false, true };
+    tr_bitfieldSetFromFlags(&bf, flags, 5);
+    check(!tr_bitfieldHasAll(&bf));
+    check(!tr_bitfieldHasNone(&bf));
+
+    // SetRaw should work too
+    tr_bitfieldSetHasAll(&bf);
+    uint8_t raw[1] = { 0xAA }; /* 10101010 */
+    tr_bitfieldSetRaw(&bf, raw, 1, false);
+    check(!tr_bitfieldHasAll(&bf));
+    check(!tr_bitfieldHasNone(&bf));
+
+    // None hints should be cleared for 
+    tr_bitfieldSetHasNone(&bf);
+    bool flags2[5] = { true, false, false};
+    tr_bitfieldSetFromFlags(&bf, flags2, 3);
+    check(!tr_bitfieldHasAll(&bf));
+    check(!tr_bitfieldHasNone(&bf));
+
+    // Should expand as needed even when hinted
+    tr_bitfieldSetHasNone(&bf);
+    tr_bitfieldAdd(&bf, 30);
+    check(tr_bitfieldHas(&bf, 30));
+    check(!tr_bitfieldHas(&bf, 29));
+    check(!tr_bitfieldHas(&bf, 31));
+    tr_bitfieldRem(&bf, 30);
+    check(!tr_bitfieldHas(&bf, 30));
+    check(!tr_bitfieldHas(&bf, 29));
+    check(!tr_bitfieldHas(&bf, 31));
+    
 }
 
 static int test_constructor_strict_hints(void)
@@ -901,10 +981,12 @@ int main(void)
         test_setraw,
         test_all_none_optimizations,
         test_range_all_none_optimizations,
-        test_state_mutate_hinted_bitfield,
+        test_state_mutate_hinted_bitfield_unknown_length,
+        test_state_mutate_hinted_bitfield_fixed_length,
         test_bulk_operations_clear_hints,
         test_constructor_strict_hints,
-        test_set_true_count_compression
+        test_set_true_count_compression,
+        test_hint_operations_with_unknown_length
     };
 
     int ret = runTests(tests, NUM_TESTS(tests));

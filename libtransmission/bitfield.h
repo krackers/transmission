@@ -21,7 +21,11 @@ typedef struct tr_bitfield
     uint8_t* bits;
 
     /* Number of bytes allocated for the tracked bits
-       May be 0 if all-empty/full optimization.*/
+       May be 0 even for non-zero bit_count if compressed
+       with all-empty/full optimization. Note that this
+       is lazy allocated. If 64 bits are tracked but only
+       bits 0-7 are set, only 1 byte needs to be allocated
+       with rest assumed to be 0.*/
     size_t alloc_count;
 
     /* Total number of tracked bits (length of bit vector)
@@ -63,29 +67,41 @@ void tr_bitfieldSetHasNone(tr_bitfield*);
 
 /**
  Set the nth bit, if not already set. 
- Note that calling this with n >= b->bit_count will cause
- the underlying array to be expanded, without updating the tracked bit_count.
- It is up to caller to prevent this undefined behavior.
+ 
+ WARNING: This can be called with n >= b->bit_count only if the bitfield
+ is of unknown length (bit_count == 0).
+ Bounds checking is the caller's responsibility, otherwise crash/UB.
 */
 void tr_bitfieldAdd(tr_bitfield*, size_t n);
 
 /**
  Clear the nth bit, if not already empty. 
- Note that calling this with n >= b->bit_count will cause
- the underlying array to be expanded, without updating the tracked bit_count.
- It is up to caller to prevent this undefined behavior.
+ 
+ WARNING: Like tr_bitfieldAdd, calling this with n >= b->bit_count is supported
+ only for unknown length bitfields (bit_count == 0). Additionally, it is NOT
+ allowed to call this with an unknown-length bitfield hinted as hasAll
+ (as it would be impossible to materialize the resulting array).
+ Bounds checking is the caller's responsibility, otherwise crash/UB.
 */
 void tr_bitfieldRem(tr_bitfield*, size_t n);
 
 /**
  Sets bit range [begin, end) to 1.
- Calling this with end out of range or begin >= end is a noop.
+ Calling this with begin >= end is a noop.
+ 
+ NOTE: Calling this on out-of-range begin/end or calling this
+ on an "unknown length" bitfield is ALWAYS a noop. I.e. range
+ operations fail silently if unsupported.
 */
 void tr_bitfieldAddRange(tr_bitfield*, size_t begin, size_t end);
 
 /**
- Clears bit range [begin, end) to 0
- Calling this with end out of range or begin >= end is a noop.
+ Clears bit range [begin, end) to 0.
+ Calling this with begin >= end is a noop.
+ 
+ NOTE: As with AddRange, this safely validates against b->bit_count and 
+ will be a noop on out-of-bound index or "unknown length"
+ (bit_count == 0) bitfields.
 */
 void tr_bitfieldRemRange(tr_bitfield*, size_t begin, size_t end);
 
@@ -97,6 +113,8 @@ extern tr_bitfield const TR_BITFIELD_INIT;
 
 /**
  Construct a bitfield tracking n bits.
+ NOTE: bit_count can be 0 to indicate that the length is undefined.
+ Special behavior applies for such bitfields, see rest of comments.
 */
 void tr_bitfieldConstruct(tr_bitfield*, size_t bit_count);
 
@@ -110,24 +128,33 @@ static inline void tr_bitfieldDestruct(tr_bitfield* b)
 ***/
 
 /**
- Populate bitfield based on a boolean array, updating set bit count as needed.
- Note that bitfield must already by constructed to track n bits as bit_count.
+ Set bits [0, n) of the bitfield based on a boolean array of size n.
+ Other bits are reset to 0.
+ WARNING: n > current bit_count is allowed only if the bitfield is unknown length
 */
 void tr_bitfieldSetFromFlags(tr_bitfield*, bool const* bytes, size_t n);
 
 void tr_bitfieldSetFromBitfield(tr_bitfield*, tr_bitfield const*);
 
 /**
- If bounded is true, number of bytes copied is capped by current bit count.
- Otherwise, all bytes are copied over into the bitfield, with no attempt to
-  keep alloc_bytes in sync with number of tracked bits.
+ Set bits [0, byte_count * 8) of the bitfield based on the input byte array.
+ Other bits are reset to 0.
+
+ If bounded is true, the upper bound is capped to at most the current bit count.
+ 
+ WARNING: If bounded is false, the caller is responsible for ensuring that the
+          bitfield is either of unknown length (bit_count == 0) or that the number
+          of copied bits does not exceed the current b->bit_count. In the last copied byte,
+          any extra trailing bits must be set 0.
 */
-void tr_bitfieldSetRaw(tr_bitfield*, void const* bits, size_t byte_count, bool bounded);
+void tr_bitfieldSetRaw(tr_bitfield*, void const* bytes, size_t byte_count, bool bounded);
 
 /**
- Create a COPY of the underlying byte array, returning the buffer and
- size in bytes. This can only be called when the number of tracked bits
- of the bitfield is known (> 0).
+ Create a COPY of the underlying materialized bitfield, returning the buffer and
+ size in bytes. Size of returned buffer is equal to needed_bytes(bit_count).
+ 
+ REQUIREMENT: This can only be called when the number of tracked bits 
+ is known (bit_count > 0).
 */
 void* tr_bitfieldGetRaw(tr_bitfield const* b, size_t* byte_count);
 
@@ -136,10 +163,10 @@ void* tr_bitfieldGetRaw(tr_bitfield const* b, size_t* byte_count);
 ***/
 
 /**
- Return number of set bits in [begin, end). Calling this with
- a begin out of range returns 0.
- Calling this with an end out of range implicitly caps the end
- to the bit of the last allocated byte.
+ Return number of set bits in [begin, end). 
+ 
+ NOTE: Begin/end indices are implicitly capped to last tracked bit,
+ and fully out of range queries will result in 0.
 */
 size_t tr_bitfieldCountRange(tr_bitfield const*, size_t begin, size_t end);
 
@@ -156,4 +183,8 @@ static inline bool tr_bitfieldHasNone(tr_bitfield const* b)
     return b->bit_count != 0 ? (b->true_count == 0) : b->have_none_hint;
 }
 
+/**
+ Returns if the nth bit is set. 
+ NOTE: Out of range queries return false.
+*/
 bool tr_bitfieldHas(tr_bitfield const* b, size_t n);
