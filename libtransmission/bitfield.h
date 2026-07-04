@@ -35,11 +35,19 @@ typedef struct tr_bitfield
     /* Nnumber of bits set to 1 */
     size_t true_count;
 
-    /* Special cases for when full or empty but we don't know the bitCount.
-       This occurs when a magnet link's peers send have all / have none. 
-       These hints are only used to provide semantic meaning to
-       zero-length (bit_count == 0) bitfields. They are ignored
-       when bit_count > 0. */
+
+    /* State flags for "all" or "none" conditions.
+       These serve two distinct purposes depending on the bitfield's lifecycle:
+
+      1. Source of truth for Unknown Length (bit_count == 0) bitsets:
+         When magnet links receive BEP 6 HaveAll/HaveNone messages, we have no length 
+         limit to do the math, so tr_bitfieldHasAll/None rely entirely on these flags.
+         Note that unknown length bitsets may also be backed by an actual allocation,
+         in which case only the second point below might apply.
+      
+      2. Memory Pruning: When a bitfield mathematically reaches 0 bits or bit_count (if
+         a length is defined), the underlying array is freed to save memory,
+         and these flags are set to true to reflect that compressed state. */
     bool have_all_hint;
     bool have_none_hint;
 }
@@ -137,6 +145,7 @@ size_t tr_bitfieldCountRange(tr_bitfield const*, size_t begin, size_t end);
 
 size_t tr_bitfieldCountTrueBits(tr_bitfield const* b);
 
+// Nit: checking b->bit_count != 0 is likely redundant
 static inline bool tr_bitfieldHasAll(tr_bitfield const* b)
 {
     return b->bit_count != 0 ? (b->true_count == b->bit_count) : b->have_all_hint;

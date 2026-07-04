@@ -120,7 +120,44 @@ static bool tr_bitfieldIsValid(tr_bitfield const* b)
 {
     TR_ASSERT(b != NULL);
     TR_ASSERT((b->alloc_count == 0) == (b->bits == NULL));
-    TR_ASSERT(b->bits == NULL || b->true_count == countArray(b));
+
+    // Hints are mutually excusive
+    TR_ASSERT(!(b->have_all_hint && b->have_none_hint));
+
+    if (b->alloc_count > 0)
+    {
+        TR_ASSERT(b->bits != NULL);
+        // Array should only be allocated if not all full/empty
+        TR_ASSERT(b->have_none_hint == false);
+        TR_ASSERT(b->have_all_hint == false);
+        TR_ASSERT(b->true_count > 0); // should not be empty
+        if (b->bit_count > 0) {
+            TR_ASSERT(b->true_count < b->bit_count); // should not be full
+            // Ensure that Add/Rem was never called out of bounds.
+            TR_ASSERT(b->alloc_count <= get_bytes_needed(b->bit_count));
+        }
+
+        // The raw math must match
+        TR_ASSERT(b->true_count == countArray(b));
+    }
+    else 
+    {
+        TR_ASSERT(b->bits == NULL);
+        // Compressed / Hint Invariant
+        if (b->bit_count > 0) {
+            // At least one hint must be set.
+            TR_ASSERT(b->have_none_hint || b->have_all_hint);
+            TR_ASSERT(b->have_none_hint == (b->true_count == 0));
+            TR_ASSERT(b->have_all_hint == (b->true_count == b->bit_count));
+        } else {
+            // Unknown length, with no backing array, relying purely
+            // on BEP 6 all/none protocol hint. Since no backing array
+            // the true_count must be set to 0.
+            // Note that both hints can be flse if it is just constructed
+            // but not yet initialized by peer.
+            TR_ASSERT(b->true_count == 0); 
+        }
+    }
 
     return true;
 }
@@ -222,8 +259,19 @@ static void tr_bitfieldSetTrueCount(tr_bitfield* b, size_t n)
 
     b->true_count = n;
 
-    if (tr_bitfieldHasAll(b) || tr_bitfieldHasNone(b))
+    // If we mathematically hit 0 bits, compress back to the hint
+    if (b->true_count == 0)
     {
+        b->have_none_hint = true;
+        b->have_all_hint = false;
+    }
+    // Also compress if we mathematically hit a full bitfield (only possible if known length)
+    else if (b->bit_count > 0 && b->true_count == b->bit_count)
+    {
+        b->have_all_hint = true;
+        b->have_none_hint = false;
+    }
+    if (tr_bitfieldHasAll(b) || tr_bitfieldHasNone(b)) {
         tr_bitfieldFreeArray(b);
     }
 
@@ -262,7 +310,8 @@ void tr_bitfieldConstruct(tr_bitfield* b, size_t bit_count)
     b->bits = NULL;
     b->alloc_count = 0;
     b->have_all_hint = false;
-    b->have_none_hint = false;
+    // If length is known, it is necessarily all empty.
+    b->have_none_hint = (bit_count > 0);
 
     TR_ASSERT(tr_bitfieldIsValid(b));
 }
@@ -332,7 +381,8 @@ void tr_bitfieldSetRaw(tr_bitfield* b, void const* bits, size_t byte_count, bool
             b->bits[b->alloc_count - 1] &= 0xFFU << excess_bit_count;
         }
     }
-
+    b->have_all_hint = false;
+    b->have_none_hint = false;
     tr_bitfieldRebuildTrueCount(b);
 }
 
@@ -340,6 +390,9 @@ void tr_bitfieldSetFromFlags(tr_bitfield* b, bool const* flags, size_t n)
 {
     tr_bitfieldFreeArray(b);
     tr_bitfieldEnsureBitsAlloced(b, n);
+
+    b->have_all_hint = false;
+    b->have_none_hint = false;
     
     size_t i = 0;
     for (; i + 8 <= n; i += 8)
@@ -375,7 +428,7 @@ void tr_bitfieldAdd(tr_bitfield* b, size_t nth)
     {
         size_t const byte_idx = nth >> 3U;
         uint8_t const mask = 0x80 >> (nth & 7U);
-        
+        b->have_none_hint = false;
         b->bits[byte_idx] |= mask;
         tr_bitfieldIncTrueCount(b, 1);
     }
@@ -387,6 +440,7 @@ void tr_bitfieldAddRange(tr_bitfield* b, size_t begin, size_t end)
     if (tr_bitfieldHasAll(b)) return;
     if (!tr_bitfieldEnsureNthBitAlloced(b, end - 1)) return;
 
+    b->have_none_hint = false;
     size_t diff = 0;
     size_t const first_byte = begin >> 3U;
     size_t const last_byte = (end - 1) >> 3U;
@@ -441,7 +495,7 @@ void tr_bitfieldRem(tr_bitfield* b, size_t nth)
     {
         size_t const byte_idx = nth >> 3U;
         uint8_t const mask = 0x80 >> (nth & 7U);
-
+        b->have_all_hint = false;
         b->bits[byte_idx] &= ~mask;
         tr_bitfieldDecTrueCount(b, 1);
     }
@@ -453,6 +507,7 @@ void tr_bitfieldRemRange(tr_bitfield* b, size_t begin, size_t end)
     if (tr_bitfieldHasNone(b)) return;
     if (!tr_bitfieldEnsureNthBitAlloced(b, end - 1)) return;
 
+    b->have_all_hint = false;
     size_t diff = 0;
     size_t const first_byte = begin >> 3U;
     size_t const last_byte = (end - 1) >> 3U;
