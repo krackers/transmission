@@ -151,7 +151,7 @@ static bool tr_bitfieldIsValid(tr_bitfield const* b)
 
         // The raw math must match
         // Note: This check can be commented out as can be quite slow.
-        TR_ASSERT(b->true_count == countArray(b));
+        // TR_ASSERT(b->true_count == countArray(b));
     }
     else 
     {
