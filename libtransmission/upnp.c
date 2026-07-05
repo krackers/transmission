@@ -119,6 +119,7 @@ static int tr_upnpGetSpecificPortMappingEntry(tr_upnp* handle, char const* proto
     *intPort = '\0';
 
     tr_snprintf(portStr, sizeof(portStr), "%d", (int)handle->port);
+    tr_logAddNamedInfo(getKey(), "Checking for an existing port mapping: %s %s", proto, portStr);
 
 #if (MINIUPNPC_API_VERSION >= 10) /* adds remoteHost arg */
     err = UPNP_GetSpecificPortMappingEntry(handle->urls.controlURL, handle->data.first.servicetype, portStr, proto,
@@ -213,7 +214,7 @@ int tr_upnpPulse(tr_upnp* handle, int port, bool isEnabled, bool doPortCheck)
         freeUPNPDevlist(devlist);
     }
 
-    if (handle->state == TR_UPNP_IDLE)
+    if (handle->state == TR_UPNP_IDLE || handle->state == TR_UPNP_ERR)
     {
         if (handle->isMapped && (!isEnabled || handle->port != port))
         {
@@ -244,7 +245,7 @@ int tr_upnpPulse(tr_upnp* handle, int port, bool isEnabled, bool doPortCheck)
         handle->port = -1;
     }
 
-    if (handle->state == TR_UPNP_IDLE)
+    if (handle->state == TR_UPNP_IDLE || handle->state == TR_UPNP_ERR)
     {
         if (isEnabled && !handle->isMapped)
         {

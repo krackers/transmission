@@ -160,7 +160,7 @@ int tr_natpmpPulse(struct tr_natpmp* nat, tr_port private_port, bool is_enabled,
         }
     }
 
-    if (nat->state == TR_NATPMP_IDLE)
+    if (nat->state == TR_NATPMP_IDLE || nat->state == TR_NATPMP_ERR)
     {
         if (is_enabled && !nat->is_mapped && nat->has_discovered)
         {
