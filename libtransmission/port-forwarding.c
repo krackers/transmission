@@ -72,9 +72,11 @@ static char const* getNatStateStr(int state)
 
 static void natPulse(tr_shared* s, bool do_check)
 {
+    tr_logAddNamedInfo(getKey(), "Triggering NAT-PMP Pulse");
     int oldStatus;
     int newStatus;
     tr_port public_peer_port;
+    tr_port received_private_port;
     tr_port const private_peer_port = s->session->private_peer_port;
     bool const is_enabled = s->isEnabled && !s->isShuttingDown;
 
@@ -90,11 +92,15 @@ static void natPulse(tr_shared* s, bool do_check)
 
     oldStatus = tr_sharedTraversalStatus(s);
 
-    s->natpmpStatus = tr_natpmpPulse(s->natpmp, private_peer_port, is_enabled, &public_peer_port);
+    s->natpmpStatus = tr_natpmpPulse(s->natpmp, private_peer_port, is_enabled, &public_peer_port, &received_private_port);
 
     if (s->natpmpStatus == TR_PORT_MAPPED)
     {
         s->session->public_peer_port = public_peer_port;
+        s->session->private_peer_port = received_private_port;
+        tr_logAddNamedInfo(
+                           getKey(), "public peer port %d (private %d) [%ld min] ", s->session->public_peer_port,
+                           s->session->private_peer_port, (s->natpmp->renew_time  - tr_time())/60);
     }
 
     s->upnpStatus = tr_upnpPulse(s->upnp, private_peer_port, is_enabled, do_check);
@@ -117,10 +123,21 @@ static void set_evtimer_from_status(tr_shared* s)
     switch (tr_sharedTraversalStatus(s))
     {
     case TR_PORT_MAPPED:
-        /* if we're mapped, everything is fine... check back in 20 minutes
+        /* if we're mapped, everything is fine... check back in when needed
          * to renew the port forwarding if it's expired */
         s->doPortCheck = true;
-        sec = 60 * 20;
+
+        // Set a min and max time to prevent badly behaved systems.
+        int const min_pulse_sec = 2 * 60;
+        int const max_pulse_sec = 20 * 60;
+        if (s->natpmp->renew_time > 0) {
+            // Both are time_t so must cast to prevent promotion to uint64_t to handle past-due
+            int64_t const time_left = (int64_t) s->natpmp->renew_time  - (int64_t) tr_time();
+            sec = MAX(time_left, min_pulse_sec);
+            sec = MIN(sec, max_pulse_sec);
+        } else {
+            sec = max_pulse_sec;
+        }
         break;
 
     case TR_PORT_ERROR:
