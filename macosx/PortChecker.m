@@ -22,16 +22,22 @@
 
 #import "PortChecker.h"
 
-#define CHECKER_URL(port) [NSString stringWithFormat: @"https://portcheck.transmissionbt.com/%ld", port]
+#import <netdb.h>
+#import <arpa/inet.h>
+#import <Security/Security.h>
+
+#define CHECKER_HOST @"portcheck.transmissionbt.com"
 #define CHECK_FIRE 3.0
 
-@interface PortChecker (Private)
-
-- (void) startProbe: (NSTimer *) timer;
-
-- (void) callBackWithStatus: (port_status_t) status;
-
+@interface PortChecker ()
+@property (nonatomic, assign) BOOL isCancelled;
 @end
+
+@interface PortChecker (Private)
+- (void) startProbe: (NSTimer *) timer;
+- (void) callBackWithStatus: (port_status_t) status;
+@end
+
 
 @implementation PortChecker
 
@@ -40,14 +46,13 @@
     if ((self = [super init]))
     {
         fDelegate = delegate;
-
         fStatus = PORT_STATUS_CHECKING;
+        self.isCancelled = NO;
 
         fTimer = [NSTimer scheduledTimerWithTimeInterval: CHECK_FIRE target: self selector: @selector(startProbe:) userInfo: @(portNumber) repeats: NO];
         if (!delay)
             [fTimer fire];
     }
-
     return self;
 }
 
@@ -63,6 +68,8 @@
 
 - (void) cancelProbe
 {
+    self.isCancelled = YES;
+
     [fTimer invalidate];
     fTimer = nil;
 
@@ -88,6 +95,7 @@
 - (void) connectionDidFinishLoading: (NSURLConnection *) connection
 {
     NSString * probeString = [[NSString alloc] initWithData: fPortProbeData encoding: NSUTF8StringEncoding];
+
     fPortProbeData = nil;
 
     if (probeString)
@@ -109,24 +117,105 @@
     }
 }
 
+/**
+ Override SSL certificate validation to check against domain instead of IP.
+*/
+- (void) connection: (NSURLConnection *) connection willSendRequestForAuthenticationChallenge: (NSURLAuthenticationChallenge *) challenge
+{
+    if (![challenge.protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodServerTrust])
+    {
+        [challenge.sender performDefaultHandlingForAuthenticationChallenge:challenge];
+        return;
+    }
+
+    SecTrustRef serverTrust = challenge.protectionSpace.serverTrust;
+
+    // Force the evaluation to validate against the domain rather than the literal IP
+    SecPolicyRef policy = SecPolicyCreateSSL(true, (__bridge CFStringRef)CHECKER_HOST);
+    SecTrustSetPolicies(serverTrust, policy);
+
+    BOOL trustIsValid = NO;
+
+    SecTrustResultType result;
+    if (SecTrustEvaluate(serverTrust, &result) == errSecSuccess) {
+        trustIsValid = (result == kSecTrustResultProceed || result == kSecTrustResultUnspecified);
+    }
+
+    CFRelease(policy);
+
+    if (trustIsValid) {
+        [challenge.sender useCredential:[NSURLCredential credentialForTrust:serverTrust] forAuthenticationChallenge:challenge];
+    } else {
+        NSLog(@"Unable to get port status: SSL certificate validation failed");
+        [challenge.sender cancelAuthenticationChallenge:challenge];
+    }
+}
+
 @end
+
 
 @implementation PortChecker (Private)
 
 - (void) startProbe: (NSTimer *) timer
 {
     fTimer = nil;
+    NSInteger port = [[timer userInfo] integerValue];
 
-    NSURLRequest * portProbeRequest = [NSURLRequest requestWithURL: [NSURL URLWithString: CHECKER_URL([[timer userInfo] integerValue])]
-                                        cachePolicy: NSURLRequestReloadIgnoringLocalAndRemoteCacheData timeoutInterval: 15.0];
+    __weak typeof(self) weakSelf = self;
 
-    if ((fConnection = [[NSURLConnection alloc] initWithRequest: portProbeRequest delegate: self]))
-        fPortProbeData = [[NSMutableData alloc] init];
-    else
-    {
-        NSLog(@"Unable to get port status: failed to initiate connection");
-        [self callBackWithStatus: PORT_STATUS_ERROR];
-    }
+    // Resolve host to IPv4 asynchronously on a GCD background queue
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        struct addrinfo hints;
+        struct addrinfo *res = NULL;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+
+        NSString *ipAddress = nil;
+
+        if (getaddrinfo([CHECKER_HOST UTF8String], NULL, &hints, &res) == 0) {
+            for (struct addrinfo *p = res; p != NULL; p = p->ai_next) {
+                if (p->ai_family == AF_INET) {
+                    char ipstr[INET_ADDRSTRLEN];
+                    if (inet_ntop(AF_INET, &((struct sockaddr_in *)p->ai_addr)->sin_addr, ipstr, sizeof(ipstr))) {
+                        ipAddress = [NSString stringWithUTF8String:ipstr];
+                        break;
+                    }
+                }
+            }
+            freeaddrinfo(res);
+        }
+
+        // Dispatch back to the main thread to construct and fire the URL request
+        dispatch_async(dispatch_get_main_queue(), ^{
+            typeof(self) strongSelf = weakSelf;
+            // Exit safely if deallocated or explicitly cancelled during the background DNS lookup
+            if (!strongSelf || strongSelf.isCancelled) {
+                return;
+            }
+            if (!ipAddress) {
+                NSLog(@"Unable to get port status: failed to resolve hostname");
+                [strongSelf callBackWithStatus: PORT_STATUS_ERROR];
+                return;
+            }
+
+            NSString *urlString;
+             // Build the URL using the resolved raw IPv4 address
+            urlString = [NSString stringWithFormat:@"https://%@/%ld", ipAddress, (long)port];
+
+            NSMutableURLRequest * portProbeRequest = [NSMutableURLRequest requestWithURL: [NSURL URLWithString: urlString]
+                                                cachePolicy: NSURLRequestReloadIgnoringLocalCacheData timeoutInterval: 15.0];
+            [portProbeRequest setValue:@"no-cache" forHTTPHeaderField:@"Cache-Control"];
+            [portProbeRequest setValue:CHECKER_HOST forHTTPHeaderField:@"Host"];
+
+            if ((strongSelf->fConnection = [[NSURLConnection alloc] initWithRequest: portProbeRequest delegate: strongSelf])) {
+                strongSelf->fPortProbeData = [[NSMutableData alloc] init];
+            } else {
+                NSLog(@"Unable to get port status: failed to initiate connection");
+                [strongSelf callBackWithStatus: PORT_STATUS_ERROR];
+            }
+        });
+    });
 }
 
 - (void) callBackWithStatus: (port_status_t) status
@@ -138,4 +227,3 @@
 }
 
 @end
-
