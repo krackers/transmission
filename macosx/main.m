@@ -28,5 +28,8 @@ int main( int argc, char ** argv )
     {
         putenv( "TR_DEBUG_FD=1" );
     }
+#ifdef TR_ENABLE_ASSERTS
+    NSLog(@"Transmission compiled in debug mode with asserts.");
+#endif
     return NSApplicationMain( argc, (const char **) argv );
 }
