@@ -54,7 +54,7 @@ static size_t countRange(tr_bitfield const* b, size_t begin, size_t end)
         size_t const right_shift = (last_byte + 1) * 8 - end;
         
         val &= (0xFFU >> left_shift);
-        val &= (0xFFU << right_shift);
+        val &= (uint8_t) (0xFFU << right_shift);
 
         ret += tr_popcount_byte(val);
     }
@@ -82,7 +82,7 @@ static size_t countRange(tr_bitfield const* b, size_t begin, size_t end)
         {
             size_t const last_shift = (last_byte + 1) * 8 - end;
             val = b->bits[last_byte];
-            val &= (0xFFU << last_shift);
+            val &= (uint8_t) (0xFFU << last_shift);
             ret += tr_popcount_byte(val);
         }
     }
@@ -388,7 +388,7 @@ void tr_bitfieldSetRaw(tr_bitfield* b, void const* bytes, size_t byte_count, boo
         {
             if (bounded) {
                 // Ensure excess bits are set to 0
-                b->bits[b->alloc_count - 1] &= 0xFFU << excess_bit_count;
+                b->bits[b->alloc_count - 1] &= (uint8_t) (0xFFU << excess_bit_count);
             } else {
                 // Ensure that trailing bits are already all 0,
                 // as otherwise true_count could exceed tracked bit count.
@@ -522,7 +522,7 @@ void tr_bitfieldRem(tr_bitfield* b, size_t nth)
         size_t const byte_idx = nth >> 3U;
         uint8_t const mask = 0x80 >> (nth & 7U);
         b->have_all_hint = false;
-        b->bits[byte_idx] &= ~mask;
+        b->bits[byte_idx] &= (uint8_t) ~mask;
         tr_bitfieldDecTrueCount(b, 1);
     }
 }
