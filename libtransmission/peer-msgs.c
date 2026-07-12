@@ -164,21 +164,21 @@ struct tr_peerMsgs
     uint16_t magic_number;
 
     /* Whether or not we've choked this peer. */
-    bool peer_is_choked;
+    bool peer_is_choked : 1;
 
     /* whether or not the peer has indicated it will download from us. */
-    bool peer_is_interested;
+    bool peer_is_interested : 1;
 
     /* whether or not the peer is choking us. */
-    bool client_is_choked;
+    bool client_is_choked : 1;
 
     /* whether or not we've indicated to the peer that we would download from them if unchoked. */
-    bool client_is_interested;
+    bool client_is_interested : 1;
 
-    bool peerSupportsPex;
-    bool peerSupportsMetadataXfer;
-    bool clientSentLtepHandshake;
-    bool peerSentLtepHandshake;
+    bool peerSupportsPex : 1;
+    bool peerSupportsMetadataXfer : 1;
+    bool clientSentLtepHandshake : 1;
+    bool peerSentLtepHandshake : 1;
 
     /*bool haveFastSet;*/
 
