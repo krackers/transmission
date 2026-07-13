@@ -513,7 +513,7 @@ static tr_tracker_event const TRACKER_EVENT_INIT =
     .tracker = NULL,
     .pex = NULL,
     .pexCount = 0,
-    .seedProbability = 0
+    .seedProbability = -1
 };
 
 static void publishMessage(tr_tier* tier, char const* msg, int type)
@@ -561,7 +561,7 @@ static int8_t getSeedProbability(tr_tier* tier, int seeds, int leechers, int pex
 
     if (seeds >= 0 && leechers >= 0 && seeds + leechers > 0)
     {
-        return (int8_t)(100.0 * seeds / (seeds + leechers));
+        return MAX(1, (int8_t)(100.0 * seeds / (seeds + leechers)));
     }
 
     return -1; /* unknown */

@@ -46,6 +46,8 @@ bool tr_peerMsgsIsClientInterested(tr_peerMsgs const* msgs);
 
 bool tr_peerMsgsIsActive(tr_peerMsgs const* msgs, tr_direction direction);
 
+bool tr_peerMsgsIsUploadOnly(tr_peerMsgs const* msgs);
+
 void tr_peerMsgsUpdateActive(tr_peerMsgs* msgs, tr_direction direction);
 
 time_t tr_peerMsgsGetConnectionAge(tr_peerMsgs const* msgs);

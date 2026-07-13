@@ -180,6 +180,7 @@ struct tr_peerMsgs
     bool clientSentLtepHandshake : 1;
     bool peerSentLtepHandshake : 1;
 
+    int8_t is_upload_only; // -1 if unknown, 0 if known leecher, 1 if (partial) seeder.
     /*bool haveFastSet;*/
 
     int desiredRequestCount;
@@ -698,6 +699,11 @@ bool tr_peerMsgsIsActive(tr_peerMsgs const* msgs, tr_direction direction)
     return is_active;
 }
 
+int8_t tr_peerMsgsGetUploadOnly(tr_peerMsgs const* msgs) {
+    TR_ASSERT(tr_isPeerMsgs(msgs));
+    return msgs->is_upload_only;
+}
+
 static void tr_peerMsgsSetActive(tr_peerMsgs* msgs, tr_direction direction, bool is_active)
 {
     dbgmsg(msgs, "direction [%d] is_active [%d]", (int)direction, (int)is_active);
@@ -963,7 +969,7 @@ static void parseLtepHandshake(tr_peerMsgs* msgs, uint32_t len, struct evbuffer*
     uint8_t const* addr;
     size_t addr_len;
     tr_pex pex;
-    int8_t seedProbability = -1;
+    int8_t uploadOnlyProbability = -1;
 
     memset(&pex, 0, sizeof(tr_pex));
 
@@ -1038,7 +1044,8 @@ static void parseLtepHandshake(tr_peerMsgs* msgs, uint32_t len, struct evbuffer*
     /* look for upload_only (BEP 21) */
     if (tr_variantDictFindInt(&val, TR_KEY_upload_only, &i))
     {
-        seedProbability = i == 0 ? 0 : 100;
+        msgs->is_upload_only = (i != 0);
+        uploadOnlyProbability = i == 0 ? 0 : 100;
     }
 
     /* get peer's listening port */
@@ -1053,14 +1060,14 @@ static void parseLtepHandshake(tr_peerMsgs* msgs, uint32_t len, struct evbuffer*
     {
         pex.addr.type = TR_AF_INET;
         memcpy(&pex.addr.addr.addr4, addr, 4);
-        tr_peerMgrAddPex(msgs->torrent, TR_PEER_FROM_LTEP, &pex, seedProbability);
+        tr_peerMgrAddPex(msgs->torrent, TR_PEER_FROM_LTEP, &pex, uploadOnlyProbability);
     }
 
     if (tr_peerIoIsIncoming(msgs->io) && tr_variantDictFindRaw(&val, TR_KEY_ipv6, &addr, &addr_len) && addr_len == 16)
     {
         pex.addr.type = TR_AF_INET6;
         memcpy(&pex.addr.addr.addr6, addr, 16);
-        tr_peerMgrAddPex(msgs->torrent, TR_PEER_FROM_LTEP, &pex, seedProbability);
+        tr_peerMgrAddPex(msgs->torrent, TR_PEER_FROM_LTEP, &pex, uploadOnlyProbability);
     }
 
     /* get peer's maximum request queue size */
@@ -1187,14 +1194,16 @@ static void parseUtPex(tr_peerMsgs* msgs, uint32_t msglen, struct evbuffer* inbu
 
         for (size_t i = 0; i < n; ++i)
         {
-            int seedProbability = -1;
+            int uploadOnlyProbability = -1;
 
+            // Treat PEX as unauthoritative, so don't immediately set probability as 100
+            // If bit not set, assume a low probability
             if (i < added_f_len)
             {
-                seedProbability = (added_f[i] & ADDED_F_UPLOAD_ONLY_FLAG) != 0 ? 100 : 0;
+                uploadOnlyProbability = (added_f[i] & ADDED_F_UPLOAD_ONLY_FLAG) != 0 ? 80 : 20;
             }
 
-            tr_peerMgrAddPex(tor, TR_PEER_FROM_PEX, pex + i, seedProbability);
+            tr_peerMgrAddPex(tor, TR_PEER_FROM_PEX, pex + i, uploadOnlyProbability);
         }
 
         tr_free(pex);
@@ -1219,14 +1228,14 @@ static void parseUtPex(tr_peerMsgs* msgs, uint32_t msglen, struct evbuffer* inbu
 
         for (size_t i = 0; i < n; ++i)
         {
-            int seedProbability = -1;
+            int uploadOnlyProbability = -1;
 
             if (i < added_f_len)
             {
-                seedProbability = (added_f[i] & ADDED_F_UPLOAD_ONLY_FLAG) != 0 ? 100 : 0;
+                uploadOnlyProbability = (added_f[i] & ADDED_F_UPLOAD_ONLY_FLAG) != 0 ? 80 : 20;
             }
 
-            tr_peerMgrAddPex(tor, TR_PEER_FROM_PEX, pex + i, seedProbability);
+            tr_peerMgrAddPex(tor, TR_PEER_FROM_PEX, pex + i, uploadOnlyProbability);
         }
 
         tr_free(pex);
@@ -2715,6 +2724,7 @@ tr_peerMsgs* tr_peerMsgsNew(struct tr_torrent* torrent, struct tr_peerIo* io, tr
     m->peer.funcs = &my_funcs;
 
     m->magic_number = MAGIC_NUMBER;
+    m->is_upload_only = -1;
     m->client_is_choked = true;
     m->peer_is_choked = true;
     m->client_is_interested = false;

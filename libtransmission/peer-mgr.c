@@ -1968,6 +1968,8 @@ static void ensureAtomExists(tr_swarm* s, tr_address const* addr, tr_port const 
             a->fromBest = from;
         }
 
+        // WLOG just take the first probability that's given to us.
+        // This is treated as unauthoritative for Pex anyway.
         if (a->uploadOnlyProbability == -1)
         {
             atomSetUploadOnlyProbability(a, uploadOnlyProbability);
@@ -2575,9 +2577,24 @@ void tr_peerUpdateProgress(tr_torrent* tor, tr_peer* peer)
         peer->progress = 1.0;
     }
 
-    if (peer->atom != NULL && peer->progress >= 1.0)
+    if (peer->atom != NULL)
     {
-        atomSetUploadOnly(tor->swarm, peer->atom);
+        // Sync the atom's upload-only status against ground truth.
+        // Having all pieces or explicitly signalling uploadOnly in the handshake
+        // implies that the peer will not download from us.
+        if (peer->progress >= 1.0 || tr_peerMsgsGetUploadOnly(PEER_MSGS(peer)) == 1) {
+            atomSetUploadOnly(tor->swarm, peer->atom);
+        } else if (tr_peerMsgsGetUploadOnly(PEER_MSGS(peer)) == 0) {
+            // If they marked as a leecher in LTEP,
+            // update the initial heuristic guess.
+            atomSetUploadOnlyProbability(peer->atom, 0);
+        } else {
+            // Peer didn't signal seeder status via ltep.
+            // We only know we're connected to either a leecher
+            // or a partial seeder. WLOG just assume a low percentage
+            // of being upload only.
+            atomSetUploadOnlyProbability(peer->atom, 5);
+        }
     }
 }
 
