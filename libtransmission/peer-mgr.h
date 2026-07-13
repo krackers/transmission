@@ -38,7 +38,7 @@ enum
     /* true if the peer supports encryption */
     ADDED_F_ENCRYPTION_FLAG = 1,
     /* true if the peer is a seed or partial seed */
-    ADDED_F_SEED_FLAG = 2,
+    ADDED_F_UPLOAD_ONLY_FLAG = 2,
     /* true if the peer supports uTP */
     ADDED_F_UTP_FLAGS = 4,
     /* true if the peer has holepunch support */
@@ -74,7 +74,7 @@ tr_peerMgr* tr_peerMgrNew(tr_session* session);
 
 void tr_peerMgrFree(tr_peerMgr* manager);
 
-bool tr_peerMgrPeerIsSeed(tr_torrent const* tor, tr_address const* addr);
+bool tr_peerMgrPeerIsUploadOnly(tr_torrent const* tor, tr_address const* addr);
 
 void tr_peerMgrSetUtpSupported(tr_torrent* tor, tr_address const* addr);
 

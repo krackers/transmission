@@ -662,7 +662,7 @@ static bool tr_peerMsgsCalculateActive(tr_peerMsgs const* msgs, tr_direction dir
         /* FIXME: https://trac.transmissionbt.com/ticket/5505
         if (is_active)
         {
-            TR_ASSERT(!tr_peerIsSeed(&msgs->peer));
+            TR_ASSERT(!tr_peerIsUploadOnly(&msgs->peer));
         }
         */
     }
@@ -1191,7 +1191,7 @@ static void parseUtPex(tr_peerMsgs* msgs, uint32_t msglen, struct evbuffer* inbu
 
             if (i < added_f_len)
             {
-                seedProbability = (added_f[i] & ADDED_F_SEED_FLAG) != 0 ? 100 : 0;
+                seedProbability = (added_f[i] & ADDED_F_UPLOAD_ONLY_FLAG) != 0 ? 100 : 0;
             }
 
             tr_peerMgrAddPex(tor, TR_PEER_FROM_PEX, pex + i, seedProbability);
@@ -1223,7 +1223,7 @@ static void parseUtPex(tr_peerMsgs* msgs, uint32_t msglen, struct evbuffer* inbu
 
             if (i < added_f_len)
             {
-                seedProbability = (added_f[i] & ADDED_F_SEED_FLAG) != 0 ? 100 : 0;
+                seedProbability = (added_f[i] & ADDED_F_UPLOAD_ONLY_FLAG) != 0 ? 100 : 0;
             }
 
             tr_peerMgrAddPex(tor, TR_PEER_FROM_PEX, pex + i, seedProbability);

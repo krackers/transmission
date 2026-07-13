@@ -955,7 +955,7 @@ bool trashDataFile(const char * filename, tr_error ** error)
         dict[@"IP"] = @(peer->addr);
         dict[@"Port"] = @(peer->port);
         dict[@"Progress"] = @(peer->progress);
-        dict[@"Seed"] = @(peer->isSeed);
+        dict[@"UploadOnly"] = @(peer->isUploadOnly);
         dict[@"Encryption"] = @(peer->isEncrypted);
         dict[@"uTP"] = @(peer->isUTP);
         dict[@"Client"] = @(peer->client);

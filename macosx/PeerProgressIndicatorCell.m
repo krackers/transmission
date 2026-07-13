@@ -34,9 +34,9 @@
 }
 
 
-- (void) setSeed: (BOOL) seed
+- (void) setUploadOnly: (BOOL) uploadOnly
 {
-    fSeed = seed;
+    fUploadOnly = uploadOnly;
 }
 
 - (void) drawWithFrame: (NSRect) cellFrame inView: (NSView *) controlView
@@ -63,7 +63,7 @@
         }
 
         [super drawWithFrame: cellFrame inView: controlView];
-        if (fSeed)
+        if (fUploadOnly)
         {
             NSImage * checkImage = [NSImage imageNamed: @"CompleteCheck"];
 

@@ -139,7 +139,7 @@ void tr_peerDestruct(struct tr_peer* peer);
 /** Update the tr_peer.progress field based on the 'have' bitset. */
 void tr_peerUpdateProgress(tr_torrent* tor, struct tr_peer*);
 
-bool tr_peerIsSeed(struct tr_peer const* peer);
+bool tr_peerIsUploadOnly(struct tr_peer const* peer);
 
 /***
 ****

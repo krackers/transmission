@@ -293,7 +293,7 @@
         if  ([ident isEqualToString: @"Progress"])
         {
             NSDictionary * peer = fPeers[row];
-            [(PeerProgressIndicatorCell *)cell setSeed: [peer[@"Seed"] boolValue]];
+            [(PeerProgressIndicatorCell *)cell setUploadOnly: [peer[@"UploadOnly"] boolValue]];
         }
     }
 }
@@ -340,7 +340,7 @@
         NSString * progressString = [NSString stringWithFormat: NSLocalizedString(@"Progress: %@",
                                         "Inspector -> Peers tab -> table row tooltip"),
                                         [NSString percentString: progress longDecimals: NO]];
-        if (progress < 1.0 && [peer[@"Seed"] boolValue])
+        if (progress < 1.0 && [peer[@"UploadOnly"] boolValue])
             progressString = [progressString stringByAppendingFormat: @" (%@)", NSLocalizedString(@"Partial Seed",
                                 "Inspector -> Peers tab -> table row tooltip")];
         [components addObject: progressString];

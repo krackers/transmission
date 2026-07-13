@@ -25,9 +25,9 @@
 @interface PeerProgressIndicatorCell : NSLevelIndicatorCell
 {
     NSDictionary * fAttributes;
-    BOOL fSeed;
+    BOOL fUploadOnly;
 }
 
-- (void) setSeed: (BOOL) seed;
+- (void) setUploadOnly: (BOOL) uploadOnly;
 
 @end

@@ -123,7 +123,10 @@ struct peer_atom
     uint8_t fromBest; /* the "best" value of where the peer has been found */
     uint8_t flags; /* these match the added_f flags */
     uint8_t flags2; /* flags that aren't defined in added_f */
-    int8_t seedProbability; /* how likely is this to be a seed... [0..100] or -1 for unknown */
+    // This is a swarm level heuristic, based on tracker scrape info, containing our priors for
+    // whether a given peer acts as a seeder (is upload-only i.e. has no download intent).
+    // This does track whether they actaully have all pieces.
+    int8_t uploadOnlyProbability; /* how likely is this to be a (partial)seeder... [0..100] or -1 for unknown */
     int8_t blocklisted; /* -1 for unknown, true for blocklisted, false for not blocklisted */
 
     tr_port port;
@@ -599,51 +602,51 @@ static bool isAtomBlocklisted(tr_session* session, struct peer_atom* atom)
 ****
 ***/
 
-static void atomSetSeedProbability(struct peer_atom* atom, int seedProbability)
+static void atomSetUploadOnlyProbability(struct peer_atom* atom, int uploadOnlyProbability)
 {
     TR_ASSERT(atom != NULL);
-    TR_ASSERT(seedProbability >= -1);
-    TR_ASSERT(seedProbability <= 100);
+    TR_ASSERT(uploadOnlyProbability >= -1);
+    TR_ASSERT(uploadOnlyProbability <= 100);
 
-    atom->seedProbability = seedProbability;
+    atom->uploadOnlyProbability = uploadOnlyProbability;
 
-    if (seedProbability == 100)
+    if (uploadOnlyProbability == 100)
     {
-        atom->flags |= ADDED_F_SEED_FLAG;
+        atom->flags |= ADDED_F_UPLOAD_ONLY_FLAG;
     }
-    else if (seedProbability != -1)
+    else if (uploadOnlyProbability != -1)
     {
-        atom->flags &= ~ADDED_F_SEED_FLAG;
+        atom->flags &= ~ADDED_F_UPLOAD_ONLY_FLAG;
     }
 }
 
-static inline bool atomIsSeed(struct peer_atom const* atom)
+static inline bool atomIsUploadOnly(struct peer_atom const* atom)
 {
-    return atom->seedProbability == 100;
+    return atom->uploadOnlyProbability == 100;
 }
 
-static void atomSetSeed(tr_swarm const* s, struct peer_atom* atom)
+static void atomSetUploadOnly(tr_swarm const* s, struct peer_atom* atom)
 {
-    if (!atomIsSeed(atom))
+    if (!atomIsUploadOnly(atom))
     {
         tordbg(s, "marking peer %s as a seed", tr_atomAddrStr(atom));
 
-        atomSetSeedProbability(atom, 100);
+        atomSetUploadOnlyProbability(atom, 100);
     }
 }
 
-bool tr_peerMgrPeerIsSeed(tr_torrent const* tor, tr_address const* addr)
+bool tr_peerMgrPeerIsUploadOnly(tr_torrent const* tor, tr_address const* addr)
 {
-    bool isSeed = false;
+    bool isUploadOnly = false;
     tr_swarm const* s = tor->swarm;
     struct peer_atom const* atom = getExistingAtom(s, addr);
 
     if (atom != NULL)
     {
-        isSeed = atomIsSeed(atom);
+        isUploadOnly = atomIsUploadOnly(atom);
     }
 
-    return isSeed;
+    return isUploadOnly;
 }
 
 void tr_peerMgrSetUtpSupported(tr_torrent* tor, tr_address const* addr)
@@ -1935,7 +1938,7 @@ static int getDefaultShelfLife(uint8_t from)
 }
 
 static void ensureAtomExists(tr_swarm* s, tr_address const* addr, tr_port const port, uint8_t const flags,
-    int8_t const seedProbability, uint8_t const from)
+    int8_t const uploadOnlyProbability, uint8_t const from)
 {
     TR_ASSERT(tr_address_is_valid(addr));
     TR_ASSERT(from < TR_PEER_FROM__MAX);
@@ -1953,7 +1956,7 @@ static void ensureAtomExists(tr_swarm* s, tr_address const* addr, tr_port const 
         a->fromBest = from;
         a->shelf_date = tr_time() + getDefaultShelfLife(from) + jitter;
         a->blocklisted = -1;
-        atomSetSeedProbability(a, seedProbability);
+        atomSetUploadOnlyProbability(a, uploadOnlyProbability);
         tr_ptrArrayInsertSorted(&s->pool, a, compareAtomsByAddress);
 
         tordbg(s, "got a new atom: %s", tr_atomAddrStr(a));
@@ -1965,9 +1968,9 @@ static void ensureAtomExists(tr_swarm* s, tr_address const* addr, tr_port const 
             a->fromBest = from;
         }
 
-        if (a->seedProbability == -1)
+        if (a->uploadOnlyProbability == -1)
         {
-            atomSetSeedProbability(a, seedProbability);
+            atomSetUploadOnlyProbability(a, uploadOnlyProbability);
         }
 
         a->flags |= flags;
@@ -2187,7 +2190,7 @@ void tr_peerMgrAddIncoming(tr_peerMgr* manager, tr_address* addr, tr_port port, 
     managerUnlock(manager);
 }
 
-void tr_peerMgrAddPex(tr_torrent* tor, uint8_t from, tr_pex const* pex, int8_t seedProbability)
+void tr_peerMgrAddPex(tr_torrent* tor, uint8_t from, tr_pex const* pex, int8_t uploadOnlyProbability)
 {
     if (tr_isPex(pex)) /* safeguard against corrupt data */
     {
@@ -2198,7 +2201,7 @@ void tr_peerMgrAddPex(tr_torrent* tor, uint8_t from, tr_pex const* pex, int8_t s
         {
             if (tr_address_is_valid_for_peers(&pex->addr, pex->port))
             {
-                ensureAtomExists(s, &pex->addr, pex->port, pex->flags, seedProbability, from);
+                ensureAtomExists(s, &pex->addr, pex->port, pex->flags, uploadOnlyProbability, from);
             }
         }
 
@@ -2332,7 +2335,7 @@ static int compareAtomsByUsefulness(void const* va, void const* vb)
 
 static bool isAtomInteresting(tr_torrent const* tor, struct peer_atom* atom)
 {
-    if (tr_torrentIsSeed(tor) && atomIsSeed(atom))
+    if (tr_torrentIsSeed(tor) && atomIsUploadOnly(atom))
     {
         return false;
     }
@@ -2574,7 +2577,7 @@ void tr_peerUpdateProgress(tr_torrent* tor, tr_peer* peer)
 
     if (peer->atom != NULL && peer->progress >= 1.0)
     {
-        atomSetSeed(tor->swarm, peer->atom);
+        atomSetUploadOnly(tor->swarm, peer->atom);
     }
 }
 
@@ -2668,14 +2671,14 @@ void tr_swarmIncrementActivePeers(tr_swarm* swarm, tr_direction direction, bool 
     swarm->stats.activePeerCount[direction] = n;
 }
 
-bool tr_peerIsSeed(tr_peer const* peer)
+bool tr_peerIsUploadOnly(tr_peer const* peer)
 {
     if (peer->progress >= 1.0)
     {
         return true;
     }
 
-    if (peer->atom != NULL && atomIsSeed(peer->atom))
+    if (peer->atom != NULL && atomIsUploadOnly(peer->atom))
     {
         return true;
     }
@@ -2714,7 +2717,8 @@ uint64_t tr_peerMgrGetDesiredAvailable(tr_torrent const* tor)
 
         for (size_t i = 0; i < n; ++i)
         {
-            if (peers[i]->atom != NULL && atomIsSeed(peers[i]->atom))
+            // TODO: This is wrong as uploadOnly
+            if (peers[i]->atom != NULL && atomIsUploadOnly(peers[i]->atom))
             {
                 return tr_torrentGetLeftUntilDone(tor);
             }
@@ -2810,7 +2814,7 @@ struct tr_peer_stat* tr_peerMgrPeerStats(tr_torrent const* tor, int* setmeCount)
         stat->isIncoming = tr_peerMsgsIsIncomingConnection(msgs);
         stat->isDownloadingFrom = tr_peerMsgsIsActive(msgs, TR_PEER_TO_CLIENT);
         stat->isUploadingTo = tr_peerMsgsIsActive(msgs, TR_CLIENT_TO_PEER);
-        stat->isSeed = tr_peerIsSeed(peer);
+        stat->isUploadOnly = tr_peerIsUploadOnly(peer);
 
         stat->blocksToPeer = tr_historyGet(&peer->blocksSentToPeer, now, CANCEL_HISTORY_SEC);
         stat->blocksToClient = tr_historyGet(&peer->blocksSentToClient, now, CANCEL_HISTORY_SEC);
@@ -2912,7 +2916,9 @@ static bool isPeerInteresting(tr_torrent* const tor, bool const* const piece_is_
     TR_ASSERT(!tr_torrentIsSeed(tor));
     TR_ASSERT(tr_torrentIsPieceTransferAllowed(tor, TR_PEER_TO_CLIENT));
 
-    if (tr_peerIsSeed(peer))
+    // They have all pieces
+    // TODO: This is incorrect as isUploadOnly
+    if (tr_peerIsUploadOnly(peer))
     {
         return true;
     }
@@ -3244,7 +3250,7 @@ static void rechokeUploads(tr_swarm* s, uint64_t const now)
 
         struct peer_atom* atom = peer->atom;
 
-        if (tr_peerIsSeed(peer))
+        if (tr_peerIsUploadOnly(peer))
         {
             /* choke seeds and partial seeds */
             tr_peerMsgsSetChoke(PEER_MSGS(peer), true);
@@ -3381,8 +3387,8 @@ static bool shouldPeerBeClosed(tr_swarm const* s, tr_peer const* peer, int peerC
         return true;
     }
 
-    /* disconnect if we're both seeds and enough time has passed for PEX */
-    if (tr_torrentIsSeed(tor) && tr_peerIsSeed(peer))
+    /* disconnect if we're both uploading and enough time has passed for PEX */
+    if (tr_torrentIsSeed(tor) && tr_peerIsUploadOnly(peer))
     {
         return !tr_torrentAllowsPex(tor) || now - atom->time >= 30;
     }
@@ -4015,13 +4021,13 @@ static void atomPulse(evutil_socket_t foo UNUSED, short bar UNUSED, void* vmgr)
 /* is this atom someone that we'd want to initiate a connection to? */
 static bool isPeerCandidate(tr_torrent const* tor, struct peer_atom* atom, time_t const now)
 {
-    // Don't connect if we're both seeds
-    // Note that this single line is what effectively helps us bypass
+    // Don't connect if we're both trying to upload.
+    // Note that when this is false, helps us bypass
     // NAT by initating the "reverse-connection" to peers wanting to download
     // from us. It is the equivalent of seeding_outgoing_connections
     // behavior in libtorrent (deluge/qbittorrent), see
     // https://forum.transmissionbt.com/viewtopic.php?t=17778
-    if (tr_torrentIsSeed(tor) && atomIsSeed(atom))
+    if (tr_torrentIsSeed(tor) && atomIsUploadOnly(atom))
     {
         return false;
     }
@@ -4118,18 +4124,18 @@ static uint64_t getPeerCandidateScore(tr_torrent const* tor, struct peer_atom co
     score = addValToKey(score, 1, i);
 
     /* prefer peers that we might have a chance of uploading to...
-    so lower seed probability is better */
-    if (atom->seedProbability == 100)
+    so lower upload-only probability is better. This is the tit-for-tat behavior. */
+    if (atom->uploadOnlyProbability == 100)
     {
         i = 101;
     }
-    else if (atom->seedProbability == -1)
+    else if (atom->uploadOnlyProbability == -1)
     {
         i = 100;
     }
     else
     {
-        i = atom->seedProbability;
+        i = atom->uploadOnlyProbability;
     }
 
     score = addValToKey(score, 8, i);
@@ -4334,8 +4340,8 @@ static void initiateCandidateConnection(tr_peerMgr* mgr, struct peer_candidate* 
 {
 #if 0
 
-    fprintf(stderr, "Starting an OUTGOING connection with %s - [%s] seedProbability==%d; %s, %s\n", tr_atomAddrStr(c->atom),
-        tr_torrentName(c->tor), (int)c->atom->seedProbability, tr_torrentIsPrivate(c->tor) ? "private" : "public",
+    fprintf(stderr, "Starting an OUTGOING connection with %s - [%s] uploadOnlyProbability==%d; %s, %s\n", tr_atomAddrStr(c->atom),
+        tr_torrentName(c->tor), (int)c->atom->uploadOnlyProbability, tr_torrentIsPrivate(c->tor) ? "private" : "public",
         tr_torrentIsSeed(c->tor) ? "seed" : "downloader");
 
 #endif

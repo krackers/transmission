@@ -779,16 +779,16 @@ static ReadState readCryptoProvide(tr_handshake* handshake, struct evbuffer* inb
     if ((tor = tr_torrentFindFromObfuscatedHash(handshake->session, obfuscatedTorrentHash)) != NULL)
     {
         bool const clientIsSeed = tr_torrentIsSeed(tor);
-        bool const peerIsSeed = tr_peerMgrPeerIsSeed(tor, tr_peerIoGetAddress(handshake->io, NULL));
+        bool const peerIsUploadOnly = tr_peerMgrPeerIsUploadOnly(tor, tr_peerIoGetAddress(handshake->io, NULL));
         dbgmsg(handshake, "got INCOMING connection's encrypted handshake for torrent [%s]", tr_torrentName(tor));
         tr_peerIoSetTorrentHash(handshake->io, tor->info.hash);
         if (!tor->isRunning) {
             dbgmsg(handshake, "we are not running that torrent...");
             return tr_handshakeDone(handshake, false);
         }
-        if (clientIsSeed && peerIsSeed)
+        if (clientIsSeed && peerIsUploadOnly)
         {
-            dbgmsg(handshake, "another seed tried to reconnect to us!");
+            dbgmsg(handshake, "another seeder tried to reconnect to us!");
             return tr_handshakeDone(handshake, false);
         }
     }
