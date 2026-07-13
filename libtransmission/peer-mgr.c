@@ -2686,6 +2686,10 @@ bool tr_peerIsUploadOnly(tr_peer const* peer)
     return false;
 }
 
+static bool tr_peerIsCompleteSeed(tr_peer const* peer) {
+    return peer->progress >= 1.0;
+}
+
 /* count how many bytes we want that connected peers have */
 uint64_t tr_peerMgrGetDesiredAvailable(tr_torrent const* tor)
 {
@@ -2717,8 +2721,7 @@ uint64_t tr_peerMgrGetDesiredAvailable(tr_torrent const* tor)
 
         for (size_t i = 0; i < n; ++i)
         {
-            // TODO: This is wrong as uploadOnly
-            if (peers[i]->atom != NULL && atomIsUploadOnly(peers[i]->atom))
+            if (tr_peerIsCompleteSeed(peers[i]))
             {
                 return tr_torrentGetLeftUntilDone(tor);
             }
@@ -2916,9 +2919,8 @@ static bool isPeerInteresting(tr_torrent* const tor, bool const* const piece_is_
     TR_ASSERT(!tr_torrentIsSeed(tor));
     TR_ASSERT(tr_torrentIsPieceTransferAllowed(tor, TR_PEER_TO_CLIENT));
 
-    // They have all pieces
-    // TODO: This is incorrect as isUploadOnly
-    if (tr_peerIsUploadOnly(peer))
+    // Fast path for when they have all pieces
+    if (tr_peerIsCompleteSeed(peer))
     {
         return true;
     }
