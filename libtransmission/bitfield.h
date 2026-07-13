@@ -69,7 +69,8 @@ void tr_bitfieldSetHasNone(tr_bitfield*);
  Set the nth bit, if not already set. 
  
  WARNING: This can be called with n >= b->bit_count only if the bitfield
- is of unknown length (bit_count == 0).
+ is of unknown length (bit_count == 0), which will automatically expand
+ the underyling bitfield.
  Bounds checking is the caller's responsibility, otherwise crash/UB.
 */
 void tr_bitfieldAdd(tr_bitfield*, size_t n);
@@ -89,9 +90,10 @@ void tr_bitfieldRem(tr_bitfield*, size_t n);
  Sets bit range [begin, end) to 1.
  Calling this with begin >= end is a noop.
  
- NOTE: Calling this on out-of-range begin/end or calling this
- on an "unknown length" bitfield is ALWAYS a noop. I.e. range
- operations fail silently if unsupported.
+ NOTE: For known bitfields, begin/end indices are implicitly
+ capped to last tracked bit, and fully out of range queries will be a noop. 
+ Calling this with an "unknown length" bitfield will automatically
+ expand the underlying bitfield, similar to tr_bitfieldAdd.
 */
 void tr_bitfieldAddRange(tr_bitfield*, size_t begin, size_t end);
 
@@ -99,9 +101,12 @@ void tr_bitfieldAddRange(tr_bitfield*, size_t begin, size_t end);
  Clears bit range [begin, end) to 0.
  Calling this with begin >= end is a noop.
  
- NOTE: As with AddRange, this safely validates against b->bit_count and 
- will be a noop on out-of-bound index or "unknown length"
- (bit_count == 0) bitfields.
+ NOTE: As with AddRange, begin/end indices are implicitly capped to last
+ tracked bit (for known length bitfields) or last allocated index (for unknown length bitfields),
+ with fully out of range queries being a noop.
+
+ Additionally, it is NOT allowed to call this with an unknown-length bitfield hinted as hasAll
+ (as it would be impossible to materialize the resulting array).
 */
 void tr_bitfieldRemRange(tr_bitfield*, size_t begin, size_t end);
 
@@ -141,6 +146,7 @@ void tr_bitfieldSetFromBitfield(tr_bitfield*, tr_bitfield const*);
  Other bits are reset to 0.
 
  If bounded is true, the upper bound is capped to at most the current bit count.
+ Passing bounded is invalid (and silently ignored) for unknown length arrays.
  
  WARNING: If bounded is false, the caller is responsible for ensuring that the
           bitfield is either of unknown length (bit_count == 0) or that the number
@@ -166,6 +172,7 @@ void* tr_bitfieldGetRaw(tr_bitfield const* b, size_t* byte_count);
  Return number of set bits in [begin, end). 
  
  NOTE: Begin/end indices are implicitly capped to last tracked bit,
+ (or last allocated index for unknown length arrays)
  and fully out of range queries will result in 0.
 */
 size_t tr_bitfieldCountRange(tr_bitfield const*, size_t begin, size_t end);
@@ -184,7 +191,8 @@ static inline bool tr_bitfieldHasNone(tr_bitfield const* b)
 }
 
 /**
- Returns if the nth bit is set. 
- NOTE: Out of range queries return false.
+ Returns whether the nth bit is set. 
+ NOTE: Out of range queries are supported only for unknown length arrays. Such OOB reads
+       return false, unless the unknown length array is hinted as have_all.
 */
 bool tr_bitfieldHas(tr_bitfield const* b, size_t n);

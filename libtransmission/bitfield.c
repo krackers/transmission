@@ -40,7 +40,6 @@ static size_t countRange(tr_bitfield const* b, size_t begin, size_t end)
     size_t const first_byte = begin >> 3U;
     size_t const last_byte = (end - 1) >> 3U;
 
-    if (b->bit_count == 0) return 0;
     if (first_byte >= b->alloc_count) return 0;
 
     TR_ASSERT(begin < end);
@@ -108,6 +107,7 @@ size_t tr_bitfieldCountRange(tr_bitfield const* b, size_t begin, size_t end)
 
 bool tr_bitfieldHas(tr_bitfield const* b, size_t n)
 {
+    TR_ASSERT(b->bit_count == 0 || n < b->bit_count);
     if (tr_bitfieldHasAll(b)) return true;
     if (tr_bitfieldHasNone(b)) return false;
     if (n >> 3U >= b->alloc_count) return false;
@@ -369,7 +369,7 @@ void tr_bitfieldSetRaw(tr_bitfield* b, void const* bytes, size_t byte_count, boo
     tr_bitfieldFreeArray(b);
     b->true_count = 0;
 
-    if (bounded)
+    if (bounded && b->bit_count > 0)
     {
         byte_count = MIN(byte_count, get_bytes_needed(b->bit_count));
     }
@@ -460,7 +460,12 @@ void tr_bitfieldAdd(tr_bitfield* b, size_t nth)
 
 void tr_bitfieldAddRange(tr_bitfield* b, size_t begin, size_t end)
 {
-    if (begin >= end || end - 1 >= b->bit_count) return;
+    if (b->bit_count > 0)
+    {
+        begin = MIN(begin, b->bit_count);
+        end = MIN(end, b->bit_count);
+    }
+    if (begin >= end) return;
     if (tr_bitfieldHasAll(b)) return;
     if (!tr_bitfieldEnsureNthBitAlloced(b, end - 1)) return;
 
@@ -515,7 +520,7 @@ void tr_bitfieldRem(tr_bitfield* b, size_t nth)
 {
     TR_ASSERT(tr_bitfieldIsValid(b));
     TR_ASSERT(b->bit_count == 0 || nth < b->bit_count);
-    TR_ASSERT(b->bit_count >= 0 || !b->have_all_hint);
+    TR_ASSERT(b->bit_count > 0 || !b->have_all_hint);
 
     if (tr_bitfieldHas(b, nth) && tr_bitfieldEnsureNthBitAlloced(b, nth))
     {
@@ -529,8 +534,19 @@ void tr_bitfieldRem(tr_bitfield* b, size_t nth)
 
 void tr_bitfieldRemRange(tr_bitfield* b, size_t begin, size_t end)
 {
-    if (begin >= end || end - 1 >= b->bit_count) return;
+    TR_ASSERT(b->bit_count > 0 || !b->have_all_hint);
     if (tr_bitfieldHasNone(b)) return;
+
+    // Do not allocate memory just to write out zeroes 
+    // since unallocated space is assumed to be 0 anyway.
+    // (This is only true assuming no hint is set)
+    if (!b->have_all_hint)
+    {
+        begin = MIN(end, b->alloc_count * 8);
+        end = MIN(end, b->alloc_count * 8);
+    }
+    if (begin >= end) return;
+    
     if (!tr_bitfieldEnsureNthBitAlloced(b, end - 1)) return;
 
     b->have_all_hint = false;

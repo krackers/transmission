@@ -14,16 +14,18 @@
 
 #include "libtransmission-test.h"
 
-static int check_true_count_integrity(tr_bitfield const* bf)
-{
-    size_t manual_count = 0;
-    for (size_t i = 0; i < bf->bit_count; ++i)
-    {
-        if (tr_bitfieldHas(bf, i)) manual_count++;
-    }
-    check_int(manual_count, ==, tr_bitfieldCountTrueBits(bf));
-    return 0;
-}
+#define check_true_count_integrity(bf_ptr)                           \
+    do {                                                             \
+        tr_bitfield const* _bf = (bf_ptr);                           \
+        size_t _manual_count = 0;                                    \
+                                                                     \
+        for (size_t _i = 0; _i < _bf->bit_count; ++_i)               \
+        {                                                            \
+            if (tr_bitfieldHas(_bf, _i)) _manual_count++;            \
+        }                                                            \
+                                                                     \
+        check_int(_manual_count, ==, tr_bitfieldCountTrueBits(_bf)); \
+    } while (0)
 
 static int test_bitfield_count_range(void)
 {
@@ -556,14 +558,62 @@ static int test_unbounded_0_length_bitfield(void)
     return 0;
 }
 
-static int test_setraw(void)
+static int test_rangeops_unknown(void) {
+    tr_bitfield bf;
+    tr_bitfieldConstruct(&bf, 0);
+    check(!tr_bitfieldHas(&bf, 50));
+
+    tr_bitfieldAddRange(&bf, 5, 7);
+    check_int(tr_bitfieldCountTrueBits(&bf), ==, 2);
+    check(!tr_bitfieldHas(&bf, 4));
+    check(tr_bitfieldHas(&bf, 5));
+    check(tr_bitfieldHas(&bf, 6));
+    check(!tr_bitfieldHas(&bf, 7));
+
+    check_int(tr_bitfieldCountRange(&bf, 5, 7), ==, 2);
+    check_int(tr_bitfieldCountRange(&bf, 5, 11), ==, 2);
+    check_int(tr_bitfieldCountRange(&bf, 3, 11), ==, 2);
+    check_int(tr_bitfieldCountRange(&bf, 6, 11), ==, 1);
+    check_int(tr_bitfieldCountRange(&bf, 6, 7), ==, 1);
+    check_int(tr_bitfieldCountRange(&bf, 6, 6), ==, 0);
+
+    tr_bitfieldRemRange(&bf, 0, 100);
+    check_int(tr_bitfieldCountTrueBits(&bf), ==, 0);
+    tr_bitfieldSetRaw(&bf, {0x00}, 1, false);
+
+    tr_bitfieldAddRange(&bf, 3, 10);
+    check_int(tr_bitfieldCountTrueBits(&bf), ==, 7);
+    tr_bitfieldRemRange(&bf, 5, 100);
+    check(tr_bitfieldHas(&bf, 3));
+    check(tr_bitfieldHas(&bf, 4));
+    check(!tr_bitfieldHas(&bf, 5));
+    check_int(tr_bitfieldCountTrueBits(&bf), ==, 2);
+
+    return 0;
+}
+
+static int test_remrange_allocation_optimization(void) {
+    tr_bitfield bf;
+    tr_bitfieldConstruct(&bf, 100);
+
+    tr_bitfieldAddRange(&bf, 0, 8);
+    check_int(bf.alloc_count, ==, 1); // Only 1 byte needed
+
+    tr_bitfieldRemRange(&bf, 30, 70);
+    check_int(bf.alloc_count, ==, 1); // Should not allocate
+    check_int(tr_bitfieldCountTrueBits(&bf), ==, 8);
+
+    return 0;
+}
+
+static int test_setraw_unknown(void)
 {
     tr_bitfield bf;
     tr_bitfieldConstruct(&bf, 0);
 
     uint8_t const raw_bytes[2] = { 0xFF, 0x80 };
 
-    
+    // Bounded as true should be ignored with unknown lenght
     tr_bitfieldSetRaw(&bf, raw_bytes, 2, true);
     
     /* Because bit_count is 0, MIN(2, get_bytes_needed(0)) becomes 0.
@@ -581,6 +631,14 @@ static int test_setraw(void)
     for (int i = 0; i < 8; ++i)
     {
         check(tr_bitfieldHas(&bf, i));
+    }
+
+    // Reset the bitfield back to 0.
+    tr_bitfieldSetRaw(&bf, { 0x00 }, 1, true);
+    check_int(tr_bitfieldCountTrueBits(&bf), ==, 0);
+    for (int i = 0; i < 2; ++i)
+    {
+        check(!tr_bitfieldHas(&bf, i));
     }
 
     /* Check the second byte. 
@@ -978,7 +1036,9 @@ int main(void)
         test_exact_64bit_boundaries,
         test_setraw_short_buffer,
         test_unbounded_0_length_bitfield,
-        test_setraw,
+        test_setraw_unknown,
+        test_rangeops_unknown,
+        test_remrange_allocation_optimization,
         test_all_none_optimizations,
         test_range_all_none_optimizations,
         test_state_mutate_hinted_bitfield_unknown_length,
