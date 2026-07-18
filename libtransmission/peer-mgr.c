@@ -3628,75 +3628,54 @@ static int comparePeerLiveliness(void const* va, void const* vb)
     return 0;
 }
 
-static void sortPeersByLivelinessImpl(tr_peer** peers, void** clientData, int n, uint64_t now, tr_voidptr_compare_func compare)
+static int comparePeerLeastLively(void const* va, void const* vb)
 {
-    struct peer_liveliness* lives;
-    struct peer_liveliness* l;
-
-    /* build a sortable array of peer + extra info */
-    lives = tr_new0(struct peer_liveliness, n);
-    l = lives;
-
-    for (int i = 0; i < n; ++i, ++l)
-    {
-        tr_peer* p = peers[i];
-        l->peer = p;
-        l->doPurge = p->doPurge;
-        l->pieceDataTime = p->atom->piece_data_time;
-        l->time = p->atom->time;
-        l->speed = tr_peerGetPieceSpeed_Bps(p, now, TR_UP) + tr_peerGetPieceSpeed_Bps(p, now, TR_DOWN);
-
-        if (clientData != NULL)
-        {
-            l->clientData = clientData[i];
-        }
-    }
-
-    /* sort 'em */
-    TR_ASSERT(n == l - lives);
-    qsort(lives, n, sizeof(struct peer_liveliness), compare);
-
-    l = lives;
-
-    /* build the peer array */
-    for (int i = 0; i < n; ++i, ++l)
-    {
-        peers[i] = l->peer;
-
-        if (clientData != NULL)
-        {
-            clientData[i] = l->clientData;
-        }
-    }
-
-    TR_ASSERT(n == l - lives);
-
-    /* cleanup */
-    tr_free(lives);
+    /* Reverse the arguments to sort the least lively peers first */
+    return comparePeerLiveliness(vb, va);
 }
 
-static void sortPeersByLiveliness(tr_peer** peers, void** clientData, int n, uint64_t now)
+static void populateLivelinessFromSwarm(struct peer_liveliness* lives, tr_swarm* s, uint64_t now)
 {
-    sortPeersByLivelinessImpl(peers, clientData, n, now, comparePeerLiveliness);
+    tr_peer** peers = (tr_peer**)tr_ptrArrayBase(&s->peers);
+    int const n = tr_ptrArraySize(&s->peers);
+
+    for (int i = 0; i < n; ++i)
+    {
+        tr_peer* p = peers[i];
+        lives[i].peer = p;
+        lives[i].clientData = s;
+        lives[i].doPurge = p->doPurge;
+        lives[i].pieceDataTime = p->atom->piece_data_time;
+        lives[i].time = p->atom->time;
+        lives[i].speed = tr_peerGetPieceSpeed_Bps(p, now, TR_UP) + tr_peerGetPieceSpeed_Bps(p, now, TR_DOWN);
+    }
+}
+
+static void closeWorstPeers(struct peer_liveliness* lives, int n, int num_to_close)
+{
+    tr_quickfindFirstK(lives, n, sizeof(struct peer_liveliness), comparePeerLeastLively, num_to_close);
+
+    for (int i = 0; i < num_to_close; ++i)
+    {
+        tr_swarm* s = lives[i].clientData;
+        closePeer(s, lives[i].peer);
+    }
 }
 
 static void enforceTorrentPeerLimit(tr_swarm* s, uint64_t now)
 {
-    int n = tr_ptrArraySize(&s->peers);
+    int const n = tr_ptrArraySize(&s->peers);
     int const max = tr_torrentGetPeerLimit(s->tor);
 
     if (n > max)
     {
-        void* base = tr_ptrArrayBase(&s->peers);
-        tr_peer** peers = tr_memdup(base, n * sizeof(tr_peer*));
-        sortPeersByLiveliness(peers, NULL, n, now);
+        int const num_to_close = n - max;
+        struct peer_liveliness* lives = tr_new0(struct peer_liveliness, n);
 
-        while (n > max)
-        {
-            closePeer(s, peers[--n]);
-        }
+        populateLivelinessFromSwarm(lives, s, now);
+        closeWorstPeers(lives, n, num_to_close);
 
-        tr_free(peers);
+        tr_free(lives);
     }
 }
 
@@ -3712,39 +3691,24 @@ static void enforceSessionPeerLimit(tr_session* session, uint64_t now)
         n += tr_ptrArraySize(&tor->swarm->peers);
     }
 
-    /* if there are too many, prune out the worst */
     if (n > max)
     {
-        tr_peer** peers = tr_new(tr_peer*, n);
-        tr_swarm** swarms = tr_new(tr_swarm*, n);
-
-        /* populate the peer array */
-        n = 0;
+        int const num_to_close = n - max;
+        struct peer_liveliness* lives = tr_new0(struct peer_liveliness, n);
+        struct peer_liveliness* walk = lives;
+        
         tor = NULL;
 
+        /* populate the array sequentially */
         while ((tor = tr_torrentNext(session, tor)) != NULL)
         {
-            tr_swarm* s = tor->swarm;
-
-            for (int i = 0, tn = tr_ptrArraySize(&s->peers); i < tn; ++i, ++n)
-            {
-                peers[n] = tr_ptrArrayNth(&s->peers, i);
-                swarms[n] = s;
-            }
+            populateLivelinessFromSwarm(walk, tor->swarm, now);
+            walk += tr_ptrArraySize(&tor->swarm->peers);
         }
 
-        /* sort 'em */
-        sortPeersByLiveliness(peers, (void**)swarms, n, now);
+        closeWorstPeers(lives, n, num_to_close);
 
-        /* cull out the crappiest */
-        while (n-- > max)
-        {
-            closePeer(swarms[n], peers[n]);
-        }
-
-        /* cleanup */
-        tr_free(swarms);
-        tr_free(peers);
+        tr_free(lives);
     }
 }
 

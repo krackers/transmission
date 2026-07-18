@@ -218,7 +218,8 @@ char* evbuffer_free_to_str(struct evbuffer* buf, size_t* result_len);
 int tr_lowerBound(void const* key, void const* base, size_t nmemb, size_t size, tr_voidptr_compare_func compar,
     bool* exact_match) TR_GNUC_HOT TR_GNUC_NONNULL(1, 5, 6);
 
-/** @brief moves the best k items to the first slots in the array. O(n) */
+/** @brief moves the smallest k items to the first slots in the array. Note that the k items are 
+    unsorted relative _to each other_, i.e. this is nth_element rather than partial_sort. O(n) */
 void tr_quickfindFirstK(void* base, size_t nmemb, size_t size, tr_voidptr_compare_func compar, size_t k);
 
 /**
