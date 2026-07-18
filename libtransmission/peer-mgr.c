@@ -47,8 +47,8 @@ enum
     /* an optimistically unchoked peer is immune from rechoking
        for this many calls to rechokeUploads(). */
     OPTIMISTIC_UNCHOKE_MULTIPLIER = 4,
-    /* how frequently to reallocate bandwidth */
-    BANDWIDTH_PERIOD_MSEC = 500,
+    /* how frequently to reallocate bandwidth amongst peers */
+    BANDWIDTH_PERIOD_MSEC = 250,
     /* how frequently to age out old piece request lists */
     REFILL_UPKEEP_PERIOD_MSEC = (10 * 1000),
     /* when many peers are available, keep idle ones this long */
@@ -57,9 +57,13 @@ enum
     MAX_UPLOAD_IDLE_SECS = (60 * 5),
     /* max number of peers to ask for per second overall.
      * this throttle is to avoid overloading the router */
-    MAX_CONNECTIONS_PER_SECOND = 24,
+    MAX_CONNECTIONS_PER_SECOND = 18,
     /* */
     MAX_CONNECTIONS_PER_PULSE = (int)(MAX_CONNECTIONS_PER_SECOND * (BANDWIDTH_PERIOD_MSEC / 1000.0)),
+    /* Calculate how many pulses occur in one second, rounding up. E.g. 250ms => 4 pulses */
+    PULSES_PER_SECOND = (int)((1000 + BANDWIDTH_PERIOD_MSEC - 1) / BANDWIDTH_PERIOD_MSEC),
+    /* Store ~1 second worth of outbound candidates */
+    OUTBOUND_CANDIDATE_CAPACITY = MAX_CONNECTIONS_PER_PULSE * PULSES_PER_SECOND,
     /* number of bad pieces a peer is allowed to send before we ban them */
     MAX_BAD_PIECES_PER_PEER = 5,
     /* amount of time to keep a list of request pieces lying around
@@ -83,6 +87,12 @@ enum
     NO_BLOCKS_CANCEL_HISTORY = 120,
     /* */
     CANCEL_HISTORY_SEC = 60
+};
+
+struct cached_peer_candidate
+{
+    uint8_t torrent_hash[SHA_DIGEST_LENGTH]; /* SHA-1 hash to stably look up the torrent swarm */
+    tr_address addr;                         /* IP address to stably look up the peer atom */
 };
 
 tr_peer_event const TR_PEER_EVENT_INIT =
@@ -239,6 +249,9 @@ struct tr_peerMgr
     struct event* rechokeTimer;
     struct event* refillUpkeepTimer;
     struct event* atomTimer;
+
+    struct cached_peer_candidate outboundCandidates[OUTBOUND_CANDIDATE_CAPACITY];
+    int outboundCandidatesCount;
 };
 
 #define tordbg(t, ...) tr_logAddDeepNamed(tr_torrentName((t)->tor), __VA_ARGS__)
@@ -4192,6 +4205,25 @@ static bool checkBestScoresComeFirst(struct peer_candidate const* candidates, in
 
 #endif /* TR_ENABLE_ASSERTS */
 
+static bool isTorrentEligibleForNewPeers(tr_torrent const* tor, uint64_t now_msec)
+{
+    tr_swarm const* s = tor->swarm;
+
+    /* if the swarm isn't even running... */
+    if (!s->isRunning)
+        return false;
+
+    /* if we've already got enough peers in this torrent... */
+    if (tr_ptrArraySize(&s->peers) >= tr_torrentGetPeerLimit(tor))
+        return false;
+
+    /* if we've already got enough speed in this torrent... */
+    if (tr_torrentIsSeed(tor) && isBandwidthMaxedOut(&tor->bandwidth, now_msec, TR_UP))
+        return false;
+
+    return true;
+}
+
 /** @return an array of all the atoms we might want to connect to */
 static struct peer_candidate* getPeerCandidates(tr_session* session, int* candidateCount, int max)
 {
@@ -4234,19 +4266,7 @@ static struct peer_candidate* getPeerCandidates(tr_session* session, int* candid
         int nAtoms;
         struct peer_atom** atoms;
 
-        if (!tor->swarm->isRunning)
-        {
-            continue;
-        }
-
-        /* if we've already got enough peers in this torrent... */
-        if (tr_torrentGetPeerLimit(tor) <= tr_ptrArraySize(&tor->swarm->peers))
-        {
-            continue;
-        }
-
-        /* if we've already got enough speed in this torrent... */
-        if (tr_torrentIsSeed(tor) && isBandwidthMaxedOut(&tor->bandwidth, now_msec, TR_UP))
+        if (!isTorrentEligibleForNewPeers(tor, now_msec))
         {
             continue;
         }
@@ -4319,30 +4339,61 @@ static void initiateConnection(tr_peerMgr* mgr, tr_swarm* s, struct peer_atom* a
     atom->time = now;
 }
 
-static void initiateCandidateConnection(tr_peerMgr* mgr, struct peer_candidate* c)
+static void initiateCandidateConnection(tr_peerMgr* mgr, tr_swarm* s, struct peer_atom* atom)
 {
-#if 0
+    /* tordbg automatically prefixes the log with the torrent's name */
+    tordbg(s, "Starting an OUTGOING connection with %s - uploadOnlyProbability==%d; %s, %s",
+        tr_atomAddrStr(atom),
+        (int)atom->uploadOnlyProbability,
+        tr_torrentIsPrivate(s->tor) ? "private" : "public",
+        tr_torrentIsSeed(s->tor) ? "seed" : "downloader");
 
-    fprintf(stderr, "Starting an OUTGOING connection with %s - [%s] uploadOnlyProbability==%d; %s, %s\n", tr_atomAddrStr(c->atom),
-        tr_torrentName(c->tor), (int)c->atom->uploadOnlyProbability, tr_torrentIsPrivate(c->tor) ? "private" : "public",
-        tr_torrentIsSeed(c->tor) ? "seed" : "downloader");
-
-#endif
-
-    initiateConnection(mgr, c->tor->swarm, c->atom);
+    initiateConnection(mgr, s, atom);
 }
 
 static void makeNewPeerConnections(struct tr_peerMgr* mgr, int const max)
 {
-    int n;
-    struct peer_candidate* candidates;
-
-    candidates = getPeerCandidates(mgr->session, &n, max);
-
-    for (int i = 0; i < n && i < max; ++i)
+    // Rebuild cache if needed
+    if (mgr->outboundCandidatesCount == 0)
     {
-        initiateCandidateConnection(mgr, &candidates[i]);
+        int n = 0;
+        struct peer_candidate* candidates = getPeerCandidates(mgr->session, &n, OUTBOUND_CANDIDATE_CAPACITY);
+        
+        mgr->outboundCandidatesCount = MIN(n, OUTBOUND_CANDIDATE_CAPACITY);
+        
+        // Store in reverse order (best in back) for O(1) popping
+        for (int i = 0; i < mgr->outboundCandidatesCount; ++i)
+        {
+            int const dest_idx = mgr->outboundCandidatesCount - 1 - i;
+            memcpy(mgr->outboundCandidates[dest_idx].torrent_hash, candidates[i].tor->info.hash, SHA_DIGEST_LENGTH);
+            mgr->outboundCandidates[dest_idx].addr = candidates[i].atom->addr;
+        }
+
+        tr_free(candidates);
     }
 
-    tr_free(candidates);
+    int initiated = 0;
+    time_t const now = tr_time();
+    uint64_t const now_msec = tr_time_msec();
+
+    // Pop candidates until we hit our limit for this pulse, or run out of cached items
+    while (mgr->outboundCandidatesCount > 0 && initiated < max)
+    {
+        struct cached_peer_candidate* c = &mgr->outboundCandidates[--mgr->outboundCandidatesCount];
+        tr_swarm* s = getExistingSwarm(mgr, c->torrent_hash);
+        
+        // Verify swarm still exists and can take new peers
+        if (s != NULL && isTorrentEligibleForNewPeers(s->tor, now_msec))
+        {
+            struct peer_atom* atom = getExistingAtom(s, &c->addr);
+            
+            // Recheck the peer is still a candidate
+            if (atom != NULL && isPeerCandidate(s->tor, atom, now))
+            {
+                initiateCandidateConnection(mgr, s, atom);
+                initiated++;
+            }
+        }
+    }
 }
+
