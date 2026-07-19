@@ -3611,67 +3611,89 @@ struct peer_liveliness
     bool doPurge;
 };
 
-static int comparePeerLiveliness(void const* va, void const* vb)
+/* Returns true if 'a' is strictly MORE lively than 'b' */
+static bool isMoreLively(struct peer_liveliness const* a, struct peer_liveliness const* b)
 {
-    struct peer_liveliness const* a = va;
-    struct peer_liveliness const* b = vb;
-
-    if (a->doPurge != b->doPurge)
-    {
-        return a->doPurge ? 1 : -1;
-    }
-
-    if (a->speed != b->speed) /* faster goes first */
-    {
-        return a->speed > b->speed ? -1 : 1;
-    }
-
-    /* the one to give us data more recently goes first */
-    if (a->pieceDataTime != b->pieceDataTime)
-    {
-        return a->pieceDataTime > b->pieceDataTime ? -1 : 1;
-    }
-
-    /* the one we connected to most recently goes first */
-    if (a->time != b->time)
-    {
-        return a->time > b->time ? -1 : 1;
-    }
-
-    return 0;
+    if (a->doPurge != b->doPurge) return !a->doPurge; /* Not flagged for purge is more lively */
+    if (a->speed != b->speed) return a->speed > b->speed; /* Faster is more lively */
+    /* the one to give us data more recently is more lively */
+    if (a->pieceDataTime != b->pieceDataTime) return a->pieceDataTime > b->pieceDataTime;
+    /* one we connected to most recently is more lively*/
+    return a->time > b->time;
 }
 
-static int comparePeerLeastLively(void const* va, void const* vb)
-{
-    /* Reverse the arguments to sort the least lively peers first */
-    return comparePeerLiveliness(vb, va);
+
+#define HEAP_PARENT(i)      (((i) - 1) / 2)
+#define HEAP_LEFT_CHILD(i)  (((i) * 2) + 1)
+#define HEAP_RIGHT_CHILD(i) (((i) * 2) + 2)
+
+/* Helper to maintain a bounded max-heap for top-k best (where smaller score is better) candidates
+ * The current "worst" (largest score) is kept at the root (index 0). Sift down operation
+ * successively exchanges cur node (starting with i) with the larger of its two children
+ * to restore max-heap invariant. */
+#define DEFINE_HEAP_SIFT_DOWN(func_name, type, cmp_greater) \
+static void func_name(type* heap, int i, int n) \
+{ \
+    type const tmp = heap[i]; \
+    while (HEAP_LEFT_CHILD(i) < n) \
+    { \
+        int child = HEAP_LEFT_CHILD(i); \
+        int const right = HEAP_RIGHT_CHILD(i); \
+        \
+        /* Find the "greater" child to bubble up */ \
+        if (right < n && cmp_greater(heap[right], heap[child])) \
+        { \
+            child = right; \
+        } \
+        \
+        /* If the parent is larger than or equal to both children, the heap is valid */ \
+        if (!cmp_greater(heap[child], tmp)) \
+        { \
+            break; \
+        } \
+        \
+        heap[i] = heap[child]; \
+        i = child; \
+    } \
+    heap[i] = tmp; \
 }
 
-static void populateLivelinessFromSwarm(struct peer_liveliness* lives, tr_swarm* s, uint64_t now)
-{
-    tr_peer** peers = (tr_peer**)tr_ptrArrayBase(&s->peers);
-    int const n = tr_ptrArraySize(&s->peers);
+#define CMP_PEER_CANDIDATE_GREATER(a, b) ((a).score > (b).score)
+#define CMP_LIVELINESS_GREATER(a, b) isMoreLively(&(a), &(b))
 
-    for (int i = 0; i < n; ++i)
+// Larger score (worst) at root
+DEFINE_HEAP_SIFT_DOWN(siftDownPeerCandidate, struct peer_candidate, CMP_PEER_CANDIDATE_GREATER)
+// Liveliest at root
+DEFINE_HEAP_SIFT_DOWN(siftDownLiveliness, struct peer_liveliness, CMP_LIVELINESS_GREATER)
+
+static void tryAddPeerToVictims(struct peer_liveliness* victims, int* count, int num_to_close, 
+                                tr_swarm* s, tr_peer* p, uint64_t now)
+{
+    struct peer_liveliness live = {
+        .peer = p,
+        .clientData = s,
+        .pieceDataTime = p->atom->piece_data_time,
+        .time = p->atom->time,
+        .speed = tr_peerGetPieceSpeed_Bps(p, now, TR_UP) + 
+                 tr_peerGetPieceSpeed_Bps(p, now, TR_DOWN),
+        .doPurge = p->doPurge
+    };
+    if (*count < num_to_close)
     {
-        tr_peer* p = peers[i];
-        lives[i].peer = p;
-        lives[i].clientData = s;
-        lives[i].doPurge = p->doPurge;
-        lives[i].pieceDataTime = p->atom->piece_data_time;
-        lives[i].time = p->atom->time;
-        lives[i].speed = tr_peerGetPieceSpeed_Bps(p, now, TR_UP) + tr_peerGetPieceSpeed_Bps(p, now, TR_DOWN);
+        victims[(*count)++] = live;
+        if (*count == num_to_close)
+        {
+            /* Once capacity is reached, structure into a max-heap */
+            for (int j = HEAP_PARENT(num_to_close - 1); j >= 0; --j)
+                siftDownLiveliness(victims, j, num_to_close);
+        }
     }
-}
-
-static void closeWorstPeers(struct peer_liveliness* lives, int n, int num_to_close)
-{
-    tr_quickfindFirstK(lives, n, sizeof(struct peer_liveliness), comparePeerLeastLively, num_to_close);
-
-    for (int i = 0; i < num_to_close; ++i)
+    else if (isMoreLively(&victims[0], &live))
     {
-        tr_swarm* s = lives[i].clientData;
-        closePeer(s, lives[i].peer);
+        /* Kick out the worst (liveliest) out of our tracked set since current is
+           better (less lively) */
+        victims[0] = live;
+        siftDownLiveliness(victims, 0, num_to_close);
     }
 }
 
@@ -3680,16 +3702,29 @@ static void enforceTorrentPeerLimit(tr_swarm* s, uint64_t now)
     int const n = tr_ptrArraySize(&s->peers);
     int const max = tr_torrentGetPeerLimit(s->tor);
 
-    if (n > max)
-    {
-        int const num_to_close = n - max;
-        struct peer_liveliness* lives = tr_new0(struct peer_liveliness, n);
-
-        populateLivelinessFromSwarm(lives, s, now);
-        closeWorstPeers(lives, n, num_to_close);
-
-        tr_free(lives);
+    // Nothing to do if we already fit
+    if (n <= max) {
+        return;
     }
+
+    int const num_to_close = n - max;
+    
+    struct peer_liveliness* victims = tr_new(struct peer_liveliness, num_to_close);
+    int count = 0;
+    tr_peer** peers = (tr_peer**)tr_ptrArrayBase(&s->peers);
+
+    for (int i = 0; i < n; ++i)
+    {
+        tryAddPeerToVictims(victims, &count, num_to_close, s, peers[i], now);
+    }
+
+    for (int i = 0; i < num_to_close; ++i)
+    {
+        closePeer(victims[i].clientData, victims[i].peer);
+    }
+
+    tr_free(victims);
+
 }
 
 static void enforceSessionPeerLimit(tr_session* session, uint64_t now)
@@ -3698,31 +3733,40 @@ static void enforceSessionPeerLimit(tr_session* session, uint64_t now)
     tr_torrent* tor = NULL;
     int const max = tr_sessionGetPeerLimit(session);
 
-    /* count the total number of peers */
+    /* Count the total number of peers */
     while ((tor = tr_torrentNext(session, tor)) != NULL)
     {
         n += tr_ptrArraySize(&tor->swarm->peers);
     }
 
-    if (n > max)
-    {
-        int const num_to_close = n - max;
-        struct peer_liveliness* lives = tr_new0(struct peer_liveliness, n);
-        struct peer_liveliness* walk = lives;
-        
-        tor = NULL;
-
-        /* populate the array sequentially */
-        while ((tor = tr_torrentNext(session, tor)) != NULL)
-        {
-            populateLivelinessFromSwarm(walk, tor->swarm, now);
-            walk += tr_ptrArraySize(&tor->swarm->peers);
-        }
-
-        closeWorstPeers(lives, n, num_to_close);
-
-        tr_free(lives);
+    // Nothing to do if we already fit
+    if (n <= max) {
+        return;
     }
+
+    int const num_to_close = n - max;
+    struct peer_liveliness* victims = tr_new(struct peer_liveliness, num_to_close);
+    int count = 0;
+    
+    tor = NULL;
+    while ((tor = tr_torrentNext(session, tor)) != NULL)
+    {
+        tr_swarm* s = tor->swarm;
+        int const peerCount = tr_ptrArraySize(&s->peers);
+        tr_peer** peers = (tr_peer**)tr_ptrArrayBase(&s->peers);
+        
+        for (int i = 0; i < peerCount; ++i)
+        {
+            tryAddPeerToVictims(victims, &count, num_to_close, s, peers[i], now);
+        }
+    }
+
+    for (int i = 0; i < num_to_close; ++i)
+    {
+        closePeer(victims[i].clientData, victims[i].peer);
+    }
+
+    tr_free(victims);
 }
 
 static void makeNewPeerConnections(tr_peerMgr* mgr, int const max);
@@ -4157,46 +4201,6 @@ static int comparePeerCandidatesDescending(void const* va, void const* vb)
     return 0;
 }
 
-
-#define HEAP_PARENT(i)      (((i) - 1) / 2)
-#define HEAP_LEFT_CHILD(i)  (((i) * 2) + 1)
-#define HEAP_RIGHT_CHILD(i) (((i) * 2) + 2)
-
-/* Helper to maintain a bounded max-heap for top-k best (where smaller score is better) candidates
- * The current "worst" (largest score) is kept at the root (index 0). Sift down operation
- * successively exchanges cur node (starting with i) with the larger of its two children
- * to restore max-heap invariant. */
-#define DEFINE_HEAP_SIFT_DOWN(func_name, type, cmp_greater) \
-static void func_name(type* heap, int i, int n) \
-{ \
-    type const tmp = heap[i]; \
-    while (HEAP_LEFT_CHILD(i) < n) \
-    { \
-        int child = HEAP_LEFT_CHILD(i); \
-        int const right = HEAP_RIGHT_CHILD(i); \
-        \
-        /* Find the "greater" child to bubble up */ \
-        if (right < n && cmp_greater(heap[right], heap[child])) \
-        { \
-            child = right; \
-        } \
-        \
-        /* If the child is NOT greater than tmp, then tmp is in the right place */ \
-        if (!cmp_greater(heap[child], tmp)) \
-        { \
-            break; \
-        } \
-        \
-        heap[i] = heap[child]; \
-        i = child; \
-    } \
-    heap[i] = tmp; \
-}
-
-#define CMP_PEER_CANDIDATE_GREATER(a, b) ((a).score > (b).score)
-
-DEFINE_HEAP_SIFT_DOWN(siftDownPeerCandidate, struct peer_candidate, CMP_PEER_CANDIDATE_GREATER)
-
 static bool isTorrentEligibleForNewPeers(tr_torrent const* tor, uint64_t now_msec)
 {
     tr_swarm const* s = tor->swarm;
@@ -4247,6 +4251,7 @@ static struct peer_candidate* getPeerCandidates(tr_session* session, int* candid
     }
 
     // Allocate only the capacity we need for the bounded max-heap
+    // to keep track of top-k elements with lowest score (where lower score is better)
     candidates = tr_new(struct peer_candidate, max);
     int count = 0;
 
@@ -4288,7 +4293,9 @@ static struct peer_candidate* getPeerCandidates(tr_session* session, int* candid
                 }
                 else if (score < candidates[0].score)
                 {
-                    // Found a candidate better than the current worst
+                    // Found a candidate that's better (lower score),
+                    // kick out the current worst (highest score) candidate
+                    // from our tracked set
                     candidates[0].tor = tor;
                     candidates[0].atom = atom;
                     candidates[0].score = score;
