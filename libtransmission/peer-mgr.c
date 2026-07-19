@@ -4146,64 +4146,47 @@ static uint64_t getPeerCandidateScore(tr_torrent const* tor, struct peer_atom co
     return score;
 }
 
-static int comparePeerCandidates(void const* va, void const* vb)
+/* Sorts with worst (highest) score at index 0, best at the end */
+static int comparePeerCandidatesDescending(void const* va, void const* vb)
 {
-    int ret;
     struct peer_candidate const* a = va;
     struct peer_candidate const* b = vb;
 
-    if (a->score < b->score)
-    {
-        ret = -1;
-    }
-    else if (a->score > b->score)
-    {
-        ret = 1;
-    }
-    else
-    {
-        ret = 0;
-    }
-
-    return ret;
+    if (a->score > b->score) return -1;
+    if (a->score < b->score) return 1;
+    return 0;
 }
 
-/* Partial sorting -- selecting the k best candidates
-   Adapted from http://en.wikipedia.org/wiki/Selection_algorithm */
-static void selectPeerCandidates(struct peer_candidate* candidates, int candidate_count, int select_count)
+
+#define HEAP_PARENT(i)      (((i) - 1) / 2)
+#define HEAP_LEFT_CHILD(i)  (((i) * 2) + 1)
+#define HEAP_RIGHT_CHILD(i) (((i) * 2) + 2)
+
+/* Helper to maintain a bounded max-heap for top-k best (where smaller score is better) candidates
+ * The current "worst" (largest score) is kept at the root (index 0). Sift down operation
+ * successively exchanges cur node (starting with i) with the larger of its two children
+ * to restore max-heap invariant. */
+static void siftDown(struct peer_candidate* heap, int i, int n)
 {
-    tr_quickfindFirstK(candidates, candidate_count, sizeof(struct peer_candidate), comparePeerCandidates, select_count);
+    struct peer_candidate const tmp = heap[i];
+    while (HEAP_LEFT_CHILD(i) < n)
+    {
+        int child = HEAP_LEFT_CHILD(i);
+        int const right = HEAP_RIGHT_CHILD(i);
+        
+        /* Find the child with the LARGEST score */
+        if (right < n && heap[right].score > heap[child].score)
+            child = right;
+        
+        /* If the parent is larger than or equal to both children, the heap is valid */
+        if (tmp.score >= heap[child].score)
+            break;
+        
+        heap[i] = heap[child];
+        i = child;
+    }
+    heap[i] = tmp;
 }
-
-#ifdef TR_ENABLE_ASSERTS
-
-static bool checkBestScoresComeFirst(struct peer_candidate const* candidates, int n, int k)
-{
-    uint64_t worstFirstScore = 0;
-    int const x = MIN(n, k) - 1;
-
-    for (int i = 0; i < x; i++)
-    {
-        if (worstFirstScore < candidates[i].score)
-        {
-            worstFirstScore = candidates[i].score;
-        }
-    }
-
-    for (int i = 0; i < x; i++)
-    {
-        TR_ASSERT(candidates[i].score <= worstFirstScore);
-    }
-
-    for (int i = x + 1; i < n; i++)
-    {
-        TR_ASSERT(candidates[i].score >= worstFirstScore);
-    }
-
-    return true;
-}
-
-#endif /* TR_ENABLE_ASSERTS */
 
 static bool isTorrentEligibleForNewPeers(tr_torrent const* tor, uint64_t now_msec)
 {
@@ -4227,24 +4210,23 @@ static bool isTorrentEligibleForNewPeers(tr_torrent const* tor, uint64_t now_mse
 /** @return an array of all the atoms we might want to connect to */
 static struct peer_candidate* getPeerCandidates(tr_session* session, int* candidateCount, int max)
 {
-    int atomCount;
+    if (max <= 0) {
+        *candidateCount = 0;
+        return NULL;
+    }
     int peerCount;
     tr_torrent* tor;
     struct peer_candidate* candidates;
-    struct peer_candidate* walk;
     time_t const now = tr_time();
     uint64_t const now_msec = tr_time_msec();
     /* leave 5% of connection slots for incoming connections -- ticket #2609 */
-    int const maxCandidates = tr_sessionGetPeerLimit(session) * 0.95;
+    int const maxCandidates = (int)(tr_sessionGetPeerLimit(session) * 0.95);
 
-    /* count how many peers and atoms we've got */
+    /* count how many connected peers we've got in the session */
     tor = NULL;
-    atomCount = 0;
     peerCount = 0;
-
     while ((tor = tr_torrentNext(session, tor)) != NULL)
     {
-        atomCount += tr_ptrArraySize(&tor->swarm->pool);
         peerCount += tr_ptrArraySize(&tor->swarm->peers);
     }
 
@@ -4255,12 +4237,11 @@ static struct peer_candidate* getPeerCandidates(tr_session* session, int* candid
         return NULL;
     }
 
-    /* allocate an array of candidates */
-    walk = candidates = tr_new(struct peer_candidate, atomCount);
+    // Allocate only the capacity we need for the bounded max-heap
+    candidates = tr_new(struct peer_candidate, max);
+    int count = 0;
 
-    /* populate the candidate array */
     tor = NULL;
-
     while ((tor = tr_torrentNext(session, tor)) != NULL)
     {
         int nAtoms;
@@ -4280,22 +4261,43 @@ static struct peer_candidate* getPeerCandidates(tr_session* session, int* candid
             if (isPeerCandidate(tor, atom, now))
             {
                 uint8_t const salt = tr_rand_int_weak(1024);
-                walk->tor = tor;
-                walk->atom = atom;
-                walk->score = getPeerCandidateScore(tor, atom, salt);
-                ++walk;
+                uint64_t const score = getPeerCandidateScore(tor, atom, salt);
+
+                if (count < max)
+                {
+                    candidates[count].tor = tor;
+                    candidates[count].atom = atom;
+                    candidates[count].score = score;
+                    ++count;
+
+                    /* Once we hit capacity, structure the array into a max-heap */
+                    if (count == max)
+                    {
+                        for (int j = HEAP_PARENT(max - 1); j >= 0; --j)
+                            siftDown(candidates, j, max);
+                    }
+                }
+                else if (score < candidates[0].score)
+                {
+                    // Found a candidate better than the current worst
+                    candidates[0].tor = tor;
+                    candidates[0].atom = atom;
+                    candidates[0].score = score;
+                    siftDown(candidates, 0, max);
+                }
             }
         }
     }
 
-    *candidateCount = walk - candidates;
+    *candidateCount = count;
 
-    if (walk != candidates)
+    // Since heap does not guarantee any ordering between elements in same level,
+    // resort to force best candidate (lowest score) at the end
+    if (count > 1)
     {
-        selectPeerCandidates(candidates, walk - candidates, max);
+        qsort(candidates, count, sizeof(struct peer_candidate), comparePeerCandidatesDescending);
     }
 
-    TR_ASSERT(checkBestScoresComeFirst(candidates, *candidateCount, max));
     return candidates;
 }
 
@@ -4353,32 +4355,46 @@ static void initiateCandidateConnection(tr_peerMgr* mgr, tr_swarm* s, struct pee
 
 static void makeNewPeerConnections(struct tr_peerMgr* mgr, int const max)
 {
-    // Rebuild cache if needed
-    if (mgr->outboundCandidatesCount == 0)
-    {
-        int n = 0;
-        struct peer_candidate* candidates = getPeerCandidates(mgr->session, &n, OUTBOUND_CANDIDATE_CAPACITY);
-        
-        mgr->outboundCandidatesCount = MIN(n, OUTBOUND_CANDIDATE_CAPACITY);
-        
-        // Store in reverse order (best in back) for O(1) popping
-        for (int i = 0; i < mgr->outboundCandidatesCount; ++i)
-        {
-            int const dest_idx = mgr->outboundCandidatesCount - 1 - i;
-            memcpy(mgr->outboundCandidates[dest_idx].torrent_hash, candidates[i].tor->info.hash, SHA_DIGEST_LENGTH);
-            mgr->outboundCandidates[dest_idx].addr = candidates[i].atom->addr;
-        }
-
-        tr_free(candidates);
-    }
-
     int initiated = 0;
+    bool cache_refilled = false;
     time_t const now = tr_time();
     uint64_t const now_msec = tr_time_msec();
 
-    // Pop candidates until we hit our limit for this pulse, or run out of cached items
-    while (mgr->outboundCandidatesCount > 0 && initiated < max)
+    while (initiated < max)
     {
+        // Rebuild cache if it is empty
+        if (mgr->outboundCandidatesCount == 0)
+        {
+            // Call getPeerCandidates at most once per pulse
+            // since subsequent calls will return same peers.
+            // If we emptied a freshly built cache without reaching `max`, the 
+            // remaining top peers in the swarm are un-connectable right now.
+            if (cache_refilled)
+                break;
+
+            int n = 0;
+            struct peer_candidate* candidates = getPeerCandidates(mgr->session, &n, OUTBOUND_CANDIDATE_CAPACITY);
+            cache_refilled = true;
+            
+            // No candidates available session-wide; exit entirely
+            if (n == 0)
+            {
+                if (candidates != NULL) tr_free(candidates);
+                break;
+            }
+            
+            mgr->outboundCandidatesCount = MIN(n, OUTBOUND_CANDIDATE_CAPACITY);
+            
+            // getPeerCandidates sorts descending with best candidates at end
+            for (int i = 0; i < mgr->outboundCandidatesCount; ++i)
+            {
+                memcpy(mgr->outboundCandidates[i].torrent_hash, candidates[i].tor->info.hash, SHA_DIGEST_LENGTH);
+                mgr->outboundCandidates[i].addr = candidates[i].atom->addr;
+            }
+            tr_free(candidates);
+        }
+
+        // Pop from the end of the array to get the best candidates in O(1) time
         struct cached_peer_candidate* c = &mgr->outboundCandidates[--mgr->outboundCandidatesCount];
         tr_swarm* s = getExistingSwarm(mgr, c->torrent_hash);
         
