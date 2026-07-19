@@ -4166,27 +4166,36 @@ static int comparePeerCandidatesDescending(void const* va, void const* vb)
  * The current "worst" (largest score) is kept at the root (index 0). Sift down operation
  * successively exchanges cur node (starting with i) with the larger of its two children
  * to restore max-heap invariant. */
-static void siftDown(struct peer_candidate* heap, int i, int n)
-{
-    struct peer_candidate const tmp = heap[i];
-    while (HEAP_LEFT_CHILD(i) < n)
-    {
-        int child = HEAP_LEFT_CHILD(i);
-        int const right = HEAP_RIGHT_CHILD(i);
-        
-        /* Find the child with the LARGEST score */
-        if (right < n && heap[right].score > heap[child].score)
-            child = right;
-        
-        /* If the parent is larger than or equal to both children, the heap is valid */
-        if (tmp.score >= heap[child].score)
-            break;
-        
-        heap[i] = heap[child];
-        i = child;
-    }
-    heap[i] = tmp;
+#define DEFINE_HEAP_SIFT_DOWN(func_name, type, cmp_greater) \
+static void func_name(type* heap, int i, int n) \
+{ \
+    type const tmp = heap[i]; \
+    while (HEAP_LEFT_CHILD(i) < n) \
+    { \
+        int child = HEAP_LEFT_CHILD(i); \
+        int const right = HEAP_RIGHT_CHILD(i); \
+        \
+        /* Find the "greater" child to bubble up */ \
+        if (right < n && cmp_greater(heap[right], heap[child])) \
+        { \
+            child = right; \
+        } \
+        \
+        /* If the child is NOT greater than tmp, then tmp is in the right place */ \
+        if (!cmp_greater(heap[child], tmp)) \
+        { \
+            break; \
+        } \
+        \
+        heap[i] = heap[child]; \
+        i = child; \
+    } \
+    heap[i] = tmp; \
 }
+
+#define CMP_PEER_CANDIDATE_GREATER(a, b) ((a).score > (b).score)
+
+DEFINE_HEAP_SIFT_DOWN(siftDownPeerCandidate, struct peer_candidate, CMP_PEER_CANDIDATE_GREATER)
 
 static bool isTorrentEligibleForNewPeers(tr_torrent const* tor, uint64_t now_msec)
 {
@@ -4274,7 +4283,7 @@ static struct peer_candidate* getPeerCandidates(tr_session* session, int* candid
                     if (count == max)
                     {
                         for (int j = HEAP_PARENT(max - 1); j >= 0; --j)
-                            siftDown(candidates, j, max);
+                            siftDownPeerCandidate(candidates, j, max);
                     }
                 }
                 else if (score < candidates[0].score)
@@ -4283,7 +4292,7 @@ static struct peer_candidate* getPeerCandidates(tr_session* session, int* candid
                     candidates[0].tor = tor;
                     candidates[0].atom = atom;
                     candidates[0].score = score;
-                    siftDown(candidates, 0, max);
+                    siftDownPeerCandidate(candidates, 0, max);
                 }
             }
         }
