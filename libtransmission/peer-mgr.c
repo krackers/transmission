@@ -4227,35 +4227,16 @@ static struct peer_candidate* getPeerCandidates(tr_session* session, int* candid
         *candidateCount = 0;
         return NULL;
     }
-    int peerCount;
-    tr_torrent* tor;
-    struct peer_candidate* candidates;
+
+    tr_torrent* tor = NULL;
     time_t const now = tr_time();
     uint64_t const now_msec = tr_time_msec();
-    /* leave 5% of connection slots for incoming connections -- ticket #2609 */
-    int const maxCandidates = (int)(tr_sessionGetPeerLimit(session) * 0.95);
-
-    /* count how many connected peers we've got in the session */
-    tor = NULL;
-    peerCount = 0;
-    while ((tor = tr_torrentNext(session, tor)) != NULL)
-    {
-        peerCount += tr_ptrArraySize(&tor->swarm->peers);
-    }
-
-    /* don't start any new handshakes if we're full up */
-    if (maxCandidates <= peerCount)
-    {
-        *candidateCount = 0;
-        return NULL;
-    }
 
     // Allocate only the capacity we need for the bounded max-heap
     // to keep track of top-k elements with lowest score (where lower score is better)
-    candidates = tr_new(struct peer_candidate, max);
+    struct peer_candidate* candidates = tr_new(struct peer_candidate, max);
     int count = 0;
 
-    tor = NULL;
     while ((tor = tr_torrentNext(session, tor)) != NULL)
     {
         int nAtoms;
@@ -4369,21 +4350,37 @@ static void initiateCandidateConnection(tr_peerMgr* mgr, tr_swarm* s, struct pee
     initiateConnection(mgr, s, atom);
 }
 
-static void makeNewPeerConnections(struct tr_peerMgr* mgr, int const max)
+static void makeNewPeerConnections(struct tr_peerMgr* mgr, int pulseLimit)
 {
     int initiated = 0;
     bool cache_refilled = false;
     time_t const now = tr_time();
     uint64_t const now_msec = tr_time_msec();
 
-    while (initiated < max)
+    // Count how many current peers we've got in the session
+    int peerCount = 0;
+    tr_torrent* tor = NULL;
+    while ((tor = tr_torrentNext(mgr->session, tor)) != NULL)
+    {
+        peerCount += tr_ptrArraySize(&tor->swarm->peers);
+    }
+    /* leave 5% of connection slots for incoming connections -- ticket #2609 */
+    int const maxCandidates = (int)(tr_sessionGetPeerLimit(mgr->session) * 0.95);
+    int const available = maxCandidates - peerCount;
+
+    /* don't start any new handshakes if we're full up */
+    if (available <= 0)
+        return;
+    pulseLimit = MIN(pulseLimit, available);
+
+    while (initiated < pulseLimit)
     {
         // Rebuild cache if it is empty
         if (mgr->outboundCandidatesCount == 0)
         {
             // Call getPeerCandidates at most once per pulse
             // since subsequent calls will return same peers.
-            // If we emptied a freshly built cache without reaching `max`, the 
+            // If we emptied a freshly built cache without reaching `pulseLimit`, the 
             // remaining top peers in the swarm are un-connectable right now.
             if (cache_refilled)
                 break;
