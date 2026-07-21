@@ -4287,6 +4287,10 @@ static struct peer_candidate* getPeerCandidates(tr_session* session, int* candid
     }
 
     *candidateCount = count;
+    if (count == 0) {
+        tr_free(candidates);
+        return NULL;
+    }
 
     // Since heap does not guarantee any ordering between elements in same level,
     // resort to force best candidate (lowest score) at the end
