@@ -3718,7 +3718,7 @@ static void enforceTorrentPeerLimit(tr_swarm* s, uint64_t now)
         tryAddPeerToVictims(victims, &count, num_to_close, s, peers[i], now);
     }
 
-    for (int i = 0; i < num_to_close; ++i)
+    for (int i = 0; i < count; ++i)
     {
         closePeer(victims[i].clientData, victims[i].peer);
     }
@@ -3761,7 +3761,7 @@ static void enforceSessionPeerLimit(tr_session* session, uint64_t now)
         }
     }
 
-    for (int i = 0; i < num_to_close; ++i)
+    for (int i = 0; i < count; ++i)
     {
         closePeer(victims[i].clientData, victims[i].peer);
     }
